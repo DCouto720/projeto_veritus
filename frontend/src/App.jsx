@@ -42,7 +42,11 @@ function Sidebar({ role }) {
     <aside className="sidebar">
        <div className="brand-wrap">
          <img src="/logoge.png" alt="GE" className="brand-logo" />
-         <div className="brand">Test Manager</div>
+         <div className="brand">GE Aerospace</div>
+       </div>
+       <div className="brand-wrap">
+         <img src="/logoveritus.png" alt="Veritus" className="brand-logo" />
+         <div className="brand">Veritus</div>
        </div>
        <nav>
          {/* === VISÃO DO ADMIN (PLANEJAMENTO) === */}
