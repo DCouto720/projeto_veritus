@@ -4,14 +4,30 @@ from fastapi import HTTPException
 
 from app.models.projeto import Projeto
 from app.repositories.projeto_repository import ProjetoRepository
+# 1. IMPORTANTE: Importar o repositório de usuários
+from app.repositories.usuario_repository import UsuarioRepository 
 from app.schemas.projeto import ProjetoCreate, ProjetoUpdate, ProjetoResponse
 
 class ProjetoService:
     def __init__(self, db: AsyncSession):
         self.repo = ProjetoRepository(db)
+        # 2. IMPORTANTE: Inicializar o repositório aqui!
+        # Sem esta linha, o erro 'no attribute user_repo' acontece.
+        self.user_repo = UsuarioRepository(db)
+
+    # --- MÉTODO AUXILIAR DE VALIDAÇÃO ---
+    async def _validar_responsavel(self, usuario_id: Optional[int]):
+        if usuario_id:
+            user = await self.user_repo.get_usuario_by_id(usuario_id)
+            if not user:
+                raise HTTPException(status_code=400, detail="Responsável não encontrado.")
+            if not user.ativo:
+                raise HTTPException(status_code=400, detail="Não é possível atribuir um utilizador INATIVO como responsável.")
 
     async def create(self, data: ProjetoCreate) -> ProjetoResponse:
-        # Aqui você poderia validar se modulo_id e sistema_id existem antes de criar
+        # Valida ANTES de criar
+        await self._validar_responsavel(data.responsavel_id)
+
         db_obj = Projeto(
             nome=data.nome,
             descricao=data.descricao,
@@ -37,6 +53,10 @@ class ProjetoService:
         update_data = data.model_dump(exclude_unset=True)
         if not update_data:
              raise HTTPException(status_code=400, detail="Nenhum dado para atualizar")
+        
+        # Valida também na atualização
+        if 'responsavel_id' in update_data:
+             await self._validar_responsavel(update_data['responsavel_id'])
              
         updated = await self.repo.update(id, update_data)
         if updated:

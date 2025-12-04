@@ -5,7 +5,7 @@ export function AdminCasosTeste() {
   // --- ESTADOS ---
   const [projetos, setProjetos] = useState([]);
   const [ciclos, setCiclos] = useState([]);
-  const [usuarios, setUsuarios] = useState([]);
+  const [usuarios, setUsuarios] = useState([]); // Lista completa (para histórico)
   const [casos, setCasos] = useState([]);
   
   const [selectedProjeto, setSelectedProjeto] = useState('');
@@ -31,7 +31,7 @@ export function AdminCasosTeste() {
       try {
         const [projData, userData] = await Promise.all([
           api.get("/projetos"),
-          api.get("/usuarios/")
+          api.get("/usuarios/") // Carrega TODOS (ativos e inativos) para a tabela funcionar
         ]);
         setProjetos(projData || []);
         setUsuarios(userData || []);
@@ -69,26 +69,6 @@ export function AdminCasosTeste() {
     }
   };
 
-  // --- STEPS ---
-  const addStep = () => {
-    setForm(prev => ({
-      ...prev,
-      passos: [...prev.passos, { ordem: prev.passos.length + 1, acao: '', resultado_esperado: '' }]
-    }));
-  };
-
-  const removeStep = (index) => {
-    if (form.passos.length === 1) return;
-    const newPassos = form.passos.filter((_, i) => i !== index).map((p, i) => ({ ...p, ordem: i + 1 }));
-    setForm(prev => ({ ...prev, passos: newPassos }));
-  };
-
-  const updateStep = (index, field, value) => {
-    const newPassos = [...form.passos];
-    newPassos[index][field] = value;
-    setForm(prev => ({ ...prev, passos: newPassos }));
-  };
-
   // --- GESTÃO DO FORMULÁRIO ---
   const handleReset = () => {
     setForm({
@@ -120,6 +100,26 @@ export function AdminCasosTeste() {
     });
     setEditingId(caso.id);
     setView('form');
+  };
+
+  // --- STEPS ---
+  const addStep = () => {
+    setForm(prev => ({
+      ...prev,
+      passos: [...prev.passos, { ordem: prev.passos.length + 1, acao: '', resultado_esperado: '' }]
+    }));
+  };
+
+  const removeStep = (index) => {
+    if (form.passos.length === 1) return;
+    const newPassos = form.passos.filter((_, i) => i !== index).map((p, i) => ({ ...p, ordem: i + 1 }));
+    setForm(prev => ({ ...prev, passos: newPassos }));
+  };
+
+  const updateStep = (index, field, value) => {
+    const newPassos = [...form.passos];
+    newPassos[index][field] = value;
+    setForm(prev => ({ ...prev, passos: newPassos }));
   };
 
   // --- SUBMIT ---
@@ -168,10 +168,34 @@ export function AdminCasosTeste() {
     } catch (e) { alert("Erro ao excluir."); }
   };
 
-  const getUserName = (id) => {
-    const u = usuarios.find(us => us.id === id);
-    return u ? u.nome.split(' ')[0] : '---';
+  // --- HELPERS VISUAIS ---
+
+  // Renderiza o responsável com estilo de Badge (Azul=Ativo, Vermelho=Inativo)
+  const renderResponsavel = (id) => {
+      if (!id) return <span style={{color: '#cbd5e1'}}>-</span>;
+      
+      const user = usuarios.find(u => u.id === id);
+      if (!user) return <span style={{color: '#94a3b8'}}>Desconhecido</span>;
+
+      // Inativo
+      if (!user.ativo) {
+          return (
+              <span className="badge" style={{backgroundColor: '#fee2e2', color: '#b91c1c'}} title="Inativo">
+                  {user.nome.split(' ')[0]} (Inativo)
+              </span>
+          );
+      }
+      
+      // Ativo
+      return (
+          <span className="badge" style={{backgroundColor: '#eef2ff', color: '#3730a3'}}>
+              {user.nome.split(' ')[0]}
+          </span>
+      );
   };
+
+  // Filtro para o dropdown: Apenas ativos podem receber novos testes
+  const usuariosAtivos = usuarios.filter(u => u.ativo);
 
   // --- RENDERIZAÇÃO ---
   return (
@@ -253,7 +277,7 @@ export function AdminCasosTeste() {
               </div>
             </section>
 
-            {/* CARD 2: PLANEJAMENTO (INTEGRADO E LIMPO) */}
+            {/* CARD 2: PLANEJAMENTO */}
             <section className="card" style={{marginBottom: '20px'}}>
               <h3 style={{marginTop: 0, marginBottom: '20px', color: '#334155', fontSize: '1.1rem'}}>
                 Planejamento & Alocação
@@ -270,7 +294,8 @@ export function AdminCasosTeste() {
                    <label>Responsável (Testador)</label>
                    <select value={form.responsavel_id} onChange={e => setForm({...form, responsavel_id: e.target.value})}>
                       <option value="">Definir depois</option>
-                      {usuarios.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                      {/* AQUI: Usamos usuariosAtivos para não selecionar quem saiu */}
+                      {usuariosAtivos.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
                    </select>
                  </div>
               </div>
@@ -377,13 +402,11 @@ export function AdminCasosTeste() {
                                 {c.prioridade.toUpperCase()}
                             </span>
                          </td>
+                         
                          <td>
-                             {c.responsavel_id ? (
-                               <span style={{display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '20px', color: '#475569'}}>
-                                 👤 {getUserName(c.responsavel_id)}
-                               </span>
-                             ) : <span style={{color: '#cbd5e1'}}>-</span>}
+                             {renderResponsavel(c.responsavel_id)}
                          </td>
+                         
                          <td>{c.passos?.length || 0}</td>
                          <td style={{textAlign: 'right'}}>
                             <button onClick={() => handleEdit(c)} className="btn" style={{marginRight: '8px', padding: '6px 12px'}}>Editar</button>

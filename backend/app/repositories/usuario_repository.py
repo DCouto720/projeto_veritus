@@ -18,8 +18,11 @@ class UsuarioRepository:
         await self.db.refresh(usuario)
         return await self.get_usuario_by_id(usuario.id)
 
-    async def get_all_usuarios(self) -> Sequence[Usuario]:
+    async def get_all_usuarios(self, ativo: Optional[bool] = None) -> Sequence[Usuario]:
         query = select(Usuario).options(selectinload(Usuario.nivel_acesso))
+        if ativo is not None:
+            query = query.where(Usuario.ativo == ativo)
+            
         result = await self.db.execute(query)
         return result.scalars().all()
 

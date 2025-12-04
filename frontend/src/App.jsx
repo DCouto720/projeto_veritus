@@ -21,7 +21,6 @@ function TopHeader() {
     <header className="top-header">
       <nav className="top-actions" style={{ display: 'flex', alignItems: 'center', gap: '15px', width: '100%' }}>
         <div style={{ marginRight: 'auto' }}></div>
-        {/* <span style={{ fontWeight: 500 }}>{user?.nome}</span> */}
         <span className="badge" style={{backgroundColor: '#eef2ff', color: '#3730a3'}}>
             {user?.nome}
         </span>
@@ -39,11 +38,10 @@ function Sidebar({ role }) {
   return (
     <aside className="sidebar">
        <div className="brand-wrap">
-         <img src="/logoge.png" alt="GE" className="brand-logo" />
-         <div className="brand">GE Aerospace</div>
+         <img src="/logoge.svg" alt="GE" className="brand-logo-ge" />
        </div>
        <div className="brand-wrap">
-         <img src="/logoveritus.png" alt="Veritus" className="brand-logo" />
+         <img src="/logoveritus.png" alt="Veritus" className="brand-logo-vt" />
          <div className="brand">Veritus</div>
        </div>
        <nav>

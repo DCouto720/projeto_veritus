@@ -119,7 +119,7 @@ export function AdminCiclos() {
       {/* HEADER */}
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
         <div>
-           <h2 className="section-title" style={{marginBottom: '5px', border: 'none'}}>Gestão de Ciclos (Sprints)</h2>
+           <h2 className="section-title" style={{marginBottom: '5px', border: 'none'}}>Gestão de Ciclos</h2>
            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
              <label style={{fontSize: '0.9rem', fontWeight: 600}}>Projeto:</label>
              <select 
@@ -134,7 +134,7 @@ export function AdminCiclos() {
         
         {view === 'list' && (
            <button onClick={() => { setView('form'); setEditingId(null); setForm({ nome: '', descricao: '', data_inicio: '', data_fim: '', status: 'planejado' }); }} className="btn primary">
-             + Novo Ciclo
+             Novo Ciclo
            </button>
         )}
         {view === 'form' && (

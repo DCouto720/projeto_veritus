@@ -6,31 +6,27 @@ from app.schemas.caso_teste import CasoTesteCreate, CasoTesteUpdate
 from app.schemas.ciclo_teste import CicloTesteCreate, CicloTesteUpdate
 from app.schemas.execucao_teste import ExecucaoPassoUpdate
 from app.models.testing import StatusExecucaoEnum, StatusPassoEnum
-from datetime import datetime
-
-MESES_PT = {
-    1: "Janeiro",
-    2: "Fevereiro",
-    3: "Março",
-    4: "Abril",
-    5: "Maio",
-    6: "Junho",
-    7: "Julho",
-    8: "Agosto",
-    9: "Setembro",
-    10: "Outubro",
-    11: "Novembro",
-    12: "Dezembro"
-}
+from app.repositories.usuario_repository import UsuarioRepository
 
 class TesteService:
     def __init__(self, db: AsyncSession):
         self.repo = TesteRepository(db)
+        self.user_repo = UsuarioRepository(db)
+    
+    async def _validar_usuario_ativo(self, usuario_id: int):
+        if not usuario_id: return
+        user = await self.user_repo.get_usuario_by_id(usuario_id)
+        if not user or not user.ativo:
+            raise HTTPException(status_code=400, detail="O utilizador selecionado está INATIVO e não pode receber tarefas.")
 
     # --- GESTÃO DE CASOS E CICLOS ---
 
     async def criar_caso_teste(self, projeto_id: int, dados: CasoTesteCreate):
+        if dados.responsavel_id:
+            await self._validar_usuario_ativo(dados.responsavel_id)
+
         novo_caso = await self.repo.create_caso_teste(projeto_id, dados)
+
         if dados.ciclo_id and dados.responsavel_id:
             await self.repo.criar_planejamento_execucao(
                 ciclo_id=dados.ciclo_id,
@@ -42,6 +38,11 @@ class TesteService:
     
     async def atualizar_caso(self, caso_id: int, dados: CasoTesteUpdate):
         update_data = dados.model_dump(exclude_unset=True)
+
+        if 'responsavel_id' in update_data and update_data['responsavel_id']:
+             await self._validar_usuario_ativo(update_data['responsavel_id'])
+
+        
         return await self.repo.update_caso_teste(caso_id, update_data)
 
     async def remover_caso(self, caso_id: int):
@@ -63,9 +64,7 @@ class TesteService:
         """
         Prepara uma execução: cria o registro principal e copia os passos do template.
         """
-        # Validação simples: verificar se o caso já não está alocado para este ciclo (opcional)
-        # existente = await self.repo.check_execucao_existente(ciclo_id, caso_id)
-        # if existente: raise HTTPException(...)
+        await self._validar_usuario_ativo(responsavel_id)
 
         return await self.repo.criar_planejamento_execucao(ciclo_id, caso_id, responsavel_id)
 

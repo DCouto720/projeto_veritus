@@ -66,9 +66,15 @@ body {
     padding: 0 20px 20px 20px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     margin-bottom: 20px;
+    width: 500px;
+    height: auto;
 }
-.brand-logo {
-    width: 32px; height: 32px;
+.brand-logo-ge {
+    width: 200px; height: auto;
+}
+.brand-logo-vt {
+    width: 40px; height: auto;
+    padding: 0 5px 0px 5px;  
 }
 .brand {
     font-size: 1.2rem; font-weight: 600;

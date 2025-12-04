@@ -5,7 +5,9 @@ export function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [impactData, setImpactData] = useState(null);
+  
   // ESTADO DO FORMULÁRIO ATUALIZADO
   // Removemos campos que não existem no seu DB (credencial, departamento, etc)
   // Adicionamos senha e nivel_acesso_id
@@ -39,7 +41,7 @@ export function AdminUsers() {
     setForm({
       nome: user.nome || '',
       email: user.email || '',
-      senha: '', // Não preenchemos a senha por segurança ao editar
+      senha: '',
       nivel_acesso_id: user.nivel_acesso_id || 2
     });
   };
@@ -130,7 +132,7 @@ export function AdminUsers() {
           alert("Apagado com sucesso!");
           handleClear();
           loadUsers();
-      } catch (error) { alert("Erro ao apagar."); }
+      } catch (error) { alert("O usuário é vinculado a informações no banco de dados!"); }
   }
 
   return (
@@ -183,7 +185,7 @@ export function AdminUsers() {
             {/* Senha */}
             <div>
               <label>
-                {selectedUser ? 'Nova Senha (opcional)' : 'Senha Inicial'}
+                {selectedUser ? 'Nova Senha (opcional)' : 'Senha'}
               </label>
               <input 
                 type="password" 
@@ -205,9 +207,11 @@ export function AdminUsers() {
                 <button type="button" onClick={() => toggleActive(selectedUser)} className="btn" style={{backgroundColor: selectedUser.ativo ? '#f59e0b' : '#10b981', color: 'white'}}>
                     {selectedUser.ativo ? 'Desativar' : 'Ativar'}
                 </button>
-                <button type="button" onClick={handleDelete} className="btn danger">
-                    Excluir
-                </button>
+                {selectedUser.nivel_acesso?.nome !== 'admin' && (
+                  <button type="button" onClick={handleDelete} className="btn danger">
+                      Excluir
+                  </button>
+                )}
                 <button type="button" onClick={handleClear} className="btn">
                     Cancelar Seleção
                 </button>

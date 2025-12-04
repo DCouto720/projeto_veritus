@@ -1,7 +1,7 @@
 # backend/app/api/v1/endpoints/usuarios.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Sequence
+from typing import Sequence, Optional
 
 from app.core.database import AsyncSessionLocal
 from app.schemas.usuario import UsuarioCreate, UsuarioResponse, UsuarioUpdate
@@ -25,9 +25,10 @@ async def create_usuario(
 
 @router.get("/", response_model=Sequence[UsuarioResponse], summary="Listar todos usuários")
 async def get_usuarios(
+    ativo: Optional[bool] = None,
     service: UsuarioService = Depends(get_usuario_service)
 ):
-    return await service.get_all_usuarios()
+    return await service.get_all_usuarios(ativo)
 
 @router.get("/{usuario_id}", response_model=UsuarioResponse, summary="Obter usuário por ID")
 async def get_usuario(

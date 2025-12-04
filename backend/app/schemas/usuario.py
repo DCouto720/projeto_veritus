@@ -1,4 +1,3 @@
-# backend/app/schemas/usuario.py
 from pydantic import BaseModel, ConfigDict, EmailStr
 from datetime import datetime
 from typing import Optional

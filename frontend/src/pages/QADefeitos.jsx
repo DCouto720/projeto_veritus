@@ -14,7 +14,6 @@ export function QADefeitos() {
     setLoading(true);
     try {
       const data = await api.get("/defeitos/");
-      console.log("Defeitos carregados:", data); 
       setDefeitos(Array.isArray(data) ? data : []);
     } catch (error) { console.error(error); alert("Erro ao carregar defeitos."); }
     finally { setLoading(false); }
@@ -29,19 +28,46 @@ export function QADefeitos() {
     } catch (e) { alert("Erro ao atualizar."); }
   };
 
-  // --- NOVA FUNÇÃO PARA FORMATAR A DATA ---
+  // --- HELPERS VISUAIS ---
+
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString('pt-BR', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(dateString).toLocaleString('pt-BR', { 
+      day: '2-digit', month: '2-digit', year: 'numeric', 
+      hour: '2-digit', minute: '2-digit' 
     });
   };
 
+  const renderResponsavel = (responsavel) => {
+      if (!responsavel) return <span style={{color: '#94a3b8', fontSize: '0.8rem'}}>Desconhecido</span>;
+
+      // Inativo = Vermelho
+      if (responsavel.ativo === false) {
+          return (
+              <span className="badge" style={{backgroundColor: '#fee2e2', color: '#b91c1c', fontSize: '0.75rem'}} title="Utilizador Inativo">
+                  {responsavel.nome} (Inativo)
+              </span>
+          );
+      }
+      
+      // Ativo = Azul Padrão
+      return (
+          <span className="badge" style={{backgroundColor: '#eef2ff', color: '#3730a3', fontSize: '0.75rem'}}>
+              {responsavel.nome}
+          </span>
+      );
+  };
+
+  const getSeveridadeColor = (sev) => {
+      switch(sev) {
+          case 'critico': return '#b91c1c'; 
+          case 'alto': return '#ef4444'; 
+          case 'medio': return '#f59e0b'; 
+          default: return '#10b981'; 
+      }
+  };
+
+  // --- GALERIA ---
   const parseEvidencias = (evidenciaString) => {
       if (!evidenciaString) return [];
       if (typeof evidenciaString === 'string' && evidenciaString.trim().startsWith('http') && !evidenciaString.trim().startsWith('[')) {
@@ -49,24 +75,13 @@ export function QADefeitos() {
       }
       try {
           const parsed = JSON.parse(evidenciaString);
-          if (Array.isArray(parsed)) return parsed;
-          if (typeof parsed === 'string') return [parsed];
-          return [];
-      } catch (e) {
-          console.warn("Falha ao parsear evidência:", evidenciaString);
-          return [evidenciaString];
-      }
+          return Array.isArray(parsed) ? parsed : [evidenciaString];
+      } catch (e) { return [evidenciaString]; }
   };
 
   const openGallery = (evidencias) => {
       const lista = parseEvidencias(evidencias);
       if (lista.length > 0) setGalleryImages(lista);
-  };
-
-  const getSeveridadeColor = (sev) => {
-      switch(sev) {
-          case 'critico': return '#b91c1c'; case 'alto': return '#ef4444'; case 'medio': return '#f59e0b'; default: return '#10b981'; 
-      }
   };
 
   return (
@@ -84,13 +99,12 @@ export function QADefeitos() {
                 <thead>
                   <tr>
                     <th>ID</th>
-                    {/* --- NOVA COLUNA NO CABEÇALHO --- */}
                     <th>Origem (Teste/Responsável)</th>
                     <th>Erro</th>
                     <th>Evidências</th>
                     <th>Severidade</th>
                     <th>Status</th>
-                    <th>Registado em</th> 
+                    <th>Registado em</th>
                     <th>Ações</th>
                   </tr>
                 </thead>
@@ -99,66 +113,75 @@ export function QADefeitos() {
                     const temEvidencia = d.evidencias && parseEvidencias(d.evidencias).length > 0;
                     return (
                         <tr key={d.id}>
-                        <td style={{color:'#64748b'}}>#{d.id}</td>
-
-                        
-                        <td>
-                            <div style={{fontWeight: 600, color: '#334155'}}>
-                                {d.execucao?.caso_teste?.nome || 'Teste Removido'}
-                            </div>
-                            <div style={{fontSize: '0.8rem', color: '#64748b', display:'flex', alignItems:'center', gap:'5px', marginTop:'4px'}}>
-                                <span style={{backgroundColor:'#f1f5f9', padding:'2px 6px', borderRadius:'4px'}}>
-                                    👤 {d.execucao?.responsavel?.nome || 'Desconhecido'}
-                                </span>
-                            </div>
-                        </td>
-
-                        <td>
-                            <strong>{d.titulo}</strong>
-                            <div style={{fontSize:'0.85em', color:'#6b7280', marginTop:'2px', maxWidth:'300px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={d.descricao}>
-                                {d.descricao}
-                            </div>
-                        </td>
-                        <td>
-                            {temEvidencia ? (
-                                <button onClick={() => openGallery(d.evidencias)} className="btn small" style={{backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', fontSize: '0.75rem'}}>
-                                  Ver
-                                </button>
-                            ) : <span style={{color: '#cbd5e1'}}>-</span>}
-                        </td>
-                        <td>
-                            <span style={{color: getSeveridadeColor(d.severidade), fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.75rem'}}>
-                                {d.severidade}
-                            </span>
-                        </td>
-                        <td>
-                            {editingId === d.id ? (
-                                <select value={statusForm} onChange={e => setStatusForm(e.target.value)} style={{padding: '4px', borderRadius: '4px', fontSize: '0.85rem'}}>
-                                    <option value="aberto">Aberto</option>
-                                    <option value="em_teste">Em Teste</option>
-                                    <option value="corrigido">Corrigido</option>
-                                    <option value="fechado">Fechado</option>
-                                </select>
-                            ) : (
-                                <span className="badge" style={{
-                                  backgroundColor: d.status === 'aberto' ? '#fee2e2' : (d.status === 'corrigido' ? '#d1fae5' : '#eff6ff'),
-                                  color: d.status === 'aberto' ? '#b91c1c' : (d.status === 'corrigido' ? '#065f46' : '#1e40af')
-                                }}>{d.status.toUpperCase()}</span>
-                            )}
-                        </td>
-                          <td style={{fontSize: '0.85rem', color: '#475569', whiteSpace: 'nowrap'}}>
-                              {formatDate(d.created_at)}
-                          </td>
-                        <td>
-                            {editingId === d.id ? (
-                                <div style={{display:'flex', gap:'5px'}}>
-                                    <button onClick={() => handleSaveStatus(d.id)} className="btn primary" style={{fontSize: '0.7rem', padding: '4px 8px'}}>OK</button>
-                                    <button onClick={() => setEditingId(null)} className="btn" style={{fontSize: '0.7rem', padding: '4px 8px'}}>X</button>
+                            <td style={{color:'#64748b'}}>#{d.id}</td>
+                            
+                            {/* ORIGEM */}
+                            <td>
+                                <div style={{fontWeight: 600, color: '#334155', marginBottom: '4px'}}>
+                                    {d.execucao?.caso_teste?.nome || 'Teste Removido'}
                                 </div>
-                            ) : (
-                                <button onClick={() => { setEditingId(d.id); setStatusForm(d.status); }} className="btn" style={{fontSize: '0.75rem', padding: '4px 8px'}}>Status</button>
-                            )}
-                        </td>
+                                <div>
+                                    {renderResponsavel(d.execucao?.responsavel)}
+                                </div>
+                            </td>
+
+                            {/* ERRO */}
+                            <td>
+                                <strong>{d.titulo}</strong>
+                                <div style={{fontSize:'0.85em', color:'#6b7280', marginTop:'2px', maxWidth:'300px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={d.descricao}>
+                                    {d.descricao}
+                                </div>
+                            </td>
+                            
+                            {/* EVIDÊNCIAS */}
+                            <td>
+                                {temEvidencia ? (
+                                    <button onClick={() => openGallery(d.evidencias)} className="btn small" style={{backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', fontSize: '0.75rem'}}>
+                                      Ver
+                                    </button>
+                                ) : <span style={{color: '#cbd5e1'}}>-</span>}
+                            </td>
+                            
+                            {/* SEVERIDADE */}
+                            <td>
+                                <span style={{color: getSeveridadeColor(d.severidade), fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.75rem'}}>
+                                    {d.severidade}
+                                </span>
+                            </td>
+                            
+                            {/* STATUS */}
+                            <td>
+                                {editingId === d.id ? (
+                                    <select value={statusForm} onChange={e => setStatusForm(e.target.value)} style={{padding: '4px', borderRadius: '4px', fontSize: '0.85rem'}}>
+                                        <option value="aberto">Aberto</option>
+                                        <option value="em_teste">Em Teste</option>
+                                        <option value="corrigido">Corrigido</option>
+                                        <option value="fechado">Fechado</option>
+                                    </select>
+                                ) : (
+                                    <span className="badge" style={{
+                                        backgroundColor: d.status === 'aberto' ? '#fee2e2' : (d.status === 'corrigido' ? '#d1fae5' : '#eff6ff'),
+                                        color: d.status === 'aberto' ? '#b91c1c' : (d.status === 'corrigido' ? '#065f46' : '#1e40af')
+                                    }}>{d.status.toUpperCase()}</span>
+                                )}
+                            </td>
+
+                            {/* DATA */}
+                            <td style={{fontSize: '0.85rem', color: '#475569', whiteSpace: 'nowrap'}}>
+                                {formatDate(d.created_at)}
+                            </td>
+                            
+                            {/* AÇÕES */}
+                            <td>
+                                {editingId === d.id ? (
+                                    <div style={{display:'flex', gap:'5px'}}>
+                                        <button onClick={() => handleSaveStatus(d.id)} className="btn primary" style={{fontSize: '0.7rem', padding: '4px 8px'}}>OK</button>
+                                        <button onClick={() => setEditingId(null)} className="btn" style={{fontSize: '0.7rem', padding: '4px 8px'}}>X</button>
+                                    </div>
+                                ) : (
+                                    <button onClick={() => { setEditingId(d.id); setStatusForm(d.status); }} className="btn" style={{fontSize: '0.75rem', padding: '4px 8px'}}>Status</button>
+                                )}
+                            </td>
                         </tr>
                     );
                   })}
@@ -169,7 +192,7 @@ export function QADefeitos() {
         )}
       </section>
 
-      {/* GALERIA (Mantém igual) */}
+      {/* MODAL DE IMAGENS */}
       {galleryImages && (
           <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}} onClick={() => setGalleryImages(null)}>
               <div style={{display:'flex', gap:'20px', overflowX: 'auto', maxWidth: '90%', padding:'20px'}}>

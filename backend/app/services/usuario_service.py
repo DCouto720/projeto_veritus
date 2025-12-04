@@ -1,8 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError # <--- IMPORTANTE: Adicione este import
+from sqlalchemy.exc import IntegrityError
 from typing import Sequence, Optional
 from fastapi import HTTPException
-
 from app.models.usuario import Usuario
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.usuario import UsuarioCreate, UsuarioUpdate, UsuarioResponse
@@ -12,9 +11,9 @@ class UsuarioService:
     def __init__(self, db: AsyncSession):
         self.repo = UsuarioRepository(db)
 
-    async def get_all_usuarios(self) -> Sequence[UsuarioResponse]:
-        db_usuarios = await self.repo.get_all_usuarios()
-        return[UsuarioResponse.model_validate(u) for u in db_usuarios]
+    async def get_all_usuarios(self, ativo: Optional[bool] = None) -> Sequence[UsuarioResponse]:
+        db_usuarios = await self.repo.get_all_usuarios(ativo) 
+        return [UsuarioResponse.model_validate(u) for u in db_usuarios]
     
     async def get_usuario_by_id(self, usuario_id: int) -> Optional[UsuarioResponse]:
         db_usuarios = await self.repo.get_usuario_by_id(usuario_id)
@@ -75,4 +74,18 @@ class UsuarioService:
             raise HTTPException(status_code=500, detail="Erro interno ao atualizar utilizador.")
 
     async def delete_usuario(self, usuario_id: int) -> bool:
-        return await self.repo.delete_usuario(usuario_id)
+        usuario_alvo = await self.repo.get_usuario_by_id(usuario_id)        
+        if not usuario_alvo:
+            return False 
+        if usuario_alvo.nivel_acesso and usuario_alvo.nivel_acesso.nome == 'admin':
+            raise HTTPException(status_code=403, detail="Ação negada: Não é permitido excluir administradores. Apenas desativá-los.")
+
+        try:
+            return await self.repo.delete_usuario(usuario_id)
+            
+        except IntegrityError:
+            await self.repo.db.rollback() 
+            raise HTTPException(
+                status_code=409, 
+                detail="Não é possível excluir este utilizador pois ele possui registos vinculados (Projetos, Testes ou Execuções). Tente desativá-lo."
+            )

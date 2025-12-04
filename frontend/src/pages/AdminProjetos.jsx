@@ -4,7 +4,7 @@ import { api } from '../services/api';
 export function AdminProjetos() {
   const [projetos, setProjetos] = useState([]);
   const [modulos, setModulos] = useState([]);
-  const [usuarios, setUsuarios] = useState([]);
+  const [usuarios, setUsuarios] = useState([]); // Traz todos (histórico)
   
   // Estado do Form
   const [form, setForm] = useState({
@@ -23,13 +23,12 @@ export function AdminProjetos() {
         const [projData, modData, userData] = await Promise.all([
             api.get("/projetos/"),
             api.get("/modulos/"),
-            api.get("/usuarios/")
+            api.get("/usuarios/") 
         ]);
         setProjetos(projData);
         setModulos(modData);
         setUsuarios(userData);
         
-        // Pre-selecionar o primeiro módulo se disponível
         if (modData.length > 0) setForm(f => ({ ...f, modulo_id: modData[0].id }));
     } catch (e) { console.error(e); }
   };
@@ -52,14 +51,57 @@ export function AdminProjetos() {
         
         alert("Projeto salvo!");
         setEditingId(null);
-        setForm(f => ({ ...f, nome: '', descricao: '' }));
+        setForm(f => ({ ...f, nome: '', descricao: '', status: 'ativo' }));
+        
         const updated = await api.get("/projetos/");
         setProjetos(updated);
     } catch (err) { alert("Erro ao salvar projeto: " + err.message); }
   };
 
+  // --- HELPERS (Funções que limpam o código do HTML/JSX) ---
+
+  const handleEdit = (projeto) => {
+      setForm({
+          nome: projeto.nome,
+          descricao: projeto.descricao || '',
+          modulo_id: projeto.modulo_id,
+          responsavel_id: projeto.responsavel_id || '',
+          status: projeto.status
+      });
+      setEditingId(projeto.id);
+  };
+
+  const getModuloName = (id) => {
+      return modulos.find(m => m.id === id)?.nome || '-';
+  };
+
+  const renderResponsavel = (id) => {
+      if (!id) return <span style={{color: '#cbd5e1'}}>-</span>;
+      
+      const user = usuarios.find(u => u.id === id);
+      if (!user) return <span style={{color: '#94a3b8'}}>Desconhecido</span>;
+
+      if (!user.ativo) {
+          return (
+              <span className="badge" style={{backgroundColor: '#fee2e2', color: '#b91c1c'}} title="Utilizador Inativo">
+                  {user.nome} (Inativo)
+              </span>
+          );
+      }
+      
+      return (
+          <span className="badge" style={{backgroundColor: '#eef2ff', color: '#3730a3'}}>
+              {user.nome}
+          </span>
+      );
+  };
+
+  // Filtro: Para o dropdown de NOVO projeto, só queremos utilizadores ativos
+  const usuariosAtivos = usuarios.filter(u => u.ativo);
+
   return (
     <main className="container grid">
+      {/* --- FORMULÁRIO --- */}
       <section className="card">
         <h2 className="section-title">{editingId ? 'Editar Projeto' : 'Novo Projeto'}</h2>
         <form onSubmit={handleSubmit}>
@@ -71,17 +113,21 @@ export function AdminProjetos() {
                     {modulos.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
                 </select>
             </div>
+            
             <div>
                 <label>Responsável (Lider)</label>
                 <select value={form.responsavel_id} onChange={e => setForm({...form, responsavel_id: e.target.value})}>
                     <option value="">Sem responsável</option>
-                    {usuarios.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                    {/* DROPDOWN: Só mostra ativos */}
+                    {usuariosAtivos.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
                 </select>
             </div>
+            
             <div style={{gridColumn: '1/-1'}}>
                 <label>Nome do Projeto</label>
                 <input required value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} placeholder="Ex: Refatoração do Login" />
             </div>
+            
             <div style={{gridColumn: '1/-1'}}>
                 <label>Status</label>
                 <select value={form.status} onChange={e => setForm({...form, status: e.target.value})}>
@@ -91,29 +137,52 @@ export function AdminProjetos() {
                 </select>
             </div>
           </div>
-          <button type="submit" className="btn primary" style={{marginTop:'15px'}}>Salvar Projeto</button>
+          
+          <div className="actions" style={{marginTop:'15px', display:'flex', gap:'10px'}}>
+            <button type="submit" className="btn primary">Salvar Projeto</button>
+            {editingId && (
+                <button type="button" className="btn" onClick={() => {
+                    setEditingId(null); 
+                    setForm(f => ({ ...f, nome: '', descricao: '' }));
+                }}>Cancelar</button>
+            )}
+          </div>
         </form>
       </section>
 
+      {/* --- LISTAGEM --- */}
       <section className="card">
         <h2 className="section-title">Lista de Projetos</h2>
         <div className="table-wrap">
             <table>
-                <thead><tr><th>Projeto</th><th>Módulo</th><th>Status</th><th>Ações</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Projeto</th>
+                        <th>Módulo</th>
+                        <th>Status</th>
+                        <th>Responsável</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
                 <tbody>
                     {projetos.map(p => (
                         <tr key={p.id}>
                             <td><strong>{p.nome}</strong></td>
-                            <td>{modulos.find(m => m.id === p.modulo_id)?.nome || '-'}</td>
-                            <td><span className={`badge ${p.status === 'ativo' ? 'on' : 'off'}`}>{p.status}</span></td>
+                            
+                            <td>{getModuloName(p.modulo_id)}</td>
+                            
                             <td>
-                                <button onClick={() => { 
-                                    setForm({
-                                        nome: p.nome, descricao: p.descricao, 
-                                        modulo_id: p.modulo_id, responsavel_id: p.responsavel_id || '', status: p.status
-                                    }); 
-                                    setEditingId(p.id); 
-                                }} className="btn">Editar</button>
+                                <span className={`badge ${p.status === 'ativo' ? 'on' : 'off'}`}>
+                                    {p.status}
+                                </span>
+                            </td>
+                            
+                            <td>{renderResponsavel(p.responsavel_id)}</td>
+                            
+                            <td>
+                                <button onClick={() => handleEdit(p)} className="btn">
+                                    Editar
+                                </button>
                             </td>
                         </tr>
                     ))}
