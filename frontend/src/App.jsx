@@ -2,9 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, Link, useL
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './pages/Login';
 import { AdminUsers } from './pages/AdminUsers';
-import './index.css';
-
-// Imports das páginas
 import { AdminSistemas } from './pages/AdminSistemas';
 import { AdminModulos } from './pages/AdminModulos';
 import { AdminProjetos } from './pages/AdminProjetos';
@@ -13,6 +10,7 @@ import { AdminCiclos } from './pages/AdminCiclos';
 import { QADefeitos } from './pages/QADefeitos';
 import { QARunner } from './pages/QARunner';
 import { Dashboard } from './pages/Dashboard'; 
+import './index.css';
 
 // --- HEADER GLOBAL ---
 function TopHeader() {
@@ -56,7 +54,6 @@ function Sidebar({ role }) {
          <div className="brand">Veritus</div>
        </div>
        <nav>
-         {/* === VISÃO DO ADMIN === */}
          {role === 'admin' && (
            <>
              <div className="nav-section">ADMINISTRAÇÃO</div>
@@ -76,6 +73,7 @@ function Sidebar({ role }) {
              <Link to="/qa/defeitos" className={isActive('/qa/defeitos')}>Gestão de Defeitos</Link>
            </>
          )}
+         
          {/* VISÃO DO TESTADOR (EXECUÇÃO) */}
          {role === 'user' && (
            <>
@@ -117,12 +115,8 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Login />} />
-          
-          {/* === ROTAS ADMIN === */}
           <Route element={<ProtectedLayout roles={['admin']} />}>
-            {/* 2. Substituir o placeholder pela Dashboard real */}
             <Route path="/admin" element={<Dashboard />} />
-            
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/sistemas" element={<AdminSistemas />} />
             <Route path="/admin/modulos" element={<AdminModulos />} />
@@ -130,17 +124,12 @@ function App() {
             <Route path="/admin/casos" element={<AdminCasosTeste />} />
             <Route path="/admin/ciclos" element={<AdminCiclos />} />
           </Route>
-
-          {/* === ROTAS TESTADOR === */}
           <Route element={<ProtectedLayout roles={['user']} />}>
             <Route path="/qa/runner" element={<QARunner />} />
           </Route>
-
-          {/* === ROTAS COMUNS === */}
           <Route element={<ProtectedLayout roles={['user', 'admin']} />}>
             <Route path="/qa/defeitos" element={<QADefeitos />} />
           </Route>
-
            <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

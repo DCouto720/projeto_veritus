@@ -1,21 +1,17 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from typing import Sequence, Optional, List
 from fastapi import HTTPException
-
 from app.models.projeto import Projeto
 from app.repositories.projeto_repository import ProjetoRepository
-# 1. IMPORTANTE: Importar o repositório de usuários
 from app.repositories.usuario_repository import UsuarioRepository 
 from app.schemas.projeto import ProjetoCreate, ProjetoUpdate, ProjetoResponse
 
 class ProjetoService:
     def __init__(self, db: AsyncSession):
         self.repo = ProjetoRepository(db)
-        # 2. IMPORTANTE: Inicializar o repositório aqui!
-        # Sem esta linha, o erro 'no attribute user_repo' acontece.
         self.user_repo = UsuarioRepository(db)
 
-    # --- MÉTODO AUXILIAR DE VALIDAÇÃO ---
     async def _validar_responsavel(self, usuario_id: Optional[int]):
         if usuario_id:
             user = await self.user_repo.get_usuario_by_id(usuario_id)
@@ -26,11 +22,14 @@ class ProjetoService:
 
     async def create(self, data: ProjetoCreate) -> ProjetoResponse:
         await self._validar_responsavel(data.responsavel_id)
+
+        # Adicionado validação da Main e criação simplificada
         existente = await self.repo.get_by_nome(data.nome)
         if existente:
             raise HTTPException(status_code=400, detail="Já existe um Projeto com este nome.")
         
         db_obj = Projeto(**data.model_dump())        
+
         created = await self.repo.create(db_obj)
         return ProjetoResponse.model_validate(created)
 
@@ -49,7 +48,6 @@ class ProjetoService:
         if not update_data:
              raise HTTPException(status_code=400, detail="Nenhum dado para atualizar")
         
-        # Valida também na atualização
         if 'responsavel_id' in update_data:
              await self._validar_responsavel(update_data['responsavel_id'])
              
@@ -59,4 +57,11 @@ class ProjetoService:
         return None
 
     async def delete(self, id: int) -> bool:
-        return await self.repo.delete(id)
+        try:
+            return await self.repo.delete(id)
+        except IntegrityError:
+            await self.repo.db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Não é possível excluir este projeto pois existem registos dependentes (Testes, Métricas, etc)."
+            )

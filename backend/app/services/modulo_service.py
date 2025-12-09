@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Sequence, Optional
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
+from typing import Sequence, Optional
 from app.models import Modulo
 from app.repositories.modulo_repository import ModuloRepository
 from app.schemas import ModuloCreate, ModuloUpdate
@@ -10,7 +11,7 @@ class ModuloService:
         self.repo = ModuloRepository(db)
 
     async def create_modulo(self, modulo_data: ModuloCreate) -> Modulo:
-       
+        # Adicionado validação que veio da Main
         existente = await self.repo.get_by_nome_e_sistema(modulo_data.nome, modulo_data.sistema_id)
         if existente:
             raise HTTPException(status_code=400, detail="Já existe um módulo com este nome neste sistema.")
@@ -37,4 +38,11 @@ class ModuloService:
         return await self.repo.update_modulo(modulo_id, modulo_data)
 
     async def delete_modulo(self, modulo_id: int) -> bool:
-        return await self.repo.delete_modulo(modulo_id)
+        try:
+            return await self.repo.delete_modulo(modulo_id)
+        except IntegrityError:
+            await self.repo.db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Não é possível excluir este módulo pois ele possui Projetos vinculados."
+            )
