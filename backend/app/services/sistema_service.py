@@ -11,7 +11,13 @@ class SistemaService:
         self.repo = SistemaRepository(db)
 
     async def create_sistema(self, sistema_data: SistemaCreate) -> Sistema:
-        return await self.repo.create_sistema(sistema_data)
+        # Lógica da Main (com validação)
+        existente = await self.repo.get_by_nome(sistema_data.nome)
+        if existente:
+            raise HTTPException(status_code=400, detail=f"Sistema com nome '{sistema_data.nome}' já existe.")
+
+        novo_sistema = await self.repo.create_sistema(sistema_data)
+        return novo_sistema
 
     async def get_all_sistemas(self) -> Sequence[Sistema]:
         return await self.repo.get_all_sistemas()

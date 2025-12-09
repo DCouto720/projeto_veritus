@@ -12,18 +12,29 @@ import { QARunner } from './pages/QARunner';
 import { Dashboard } from './pages/Dashboard'; 
 import './index.css';
 
+// --- HEADER GLOBAL ---
 function TopHeader() {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
 
   return (
     <header className="top-header">
-      <nav className="top-actions" style={{ display: 'flex', alignItems: 'center', gap: '15px', width: '100%' }}>
-        <div style={{ marginRight: 'auto' }}></div> 
-        <span className="badge" style={{backgroundColor: '#eef2ff', color: '#3730a3'}}>
-            {user?.nome}
-        </span>
-        <button onClick={logout} className="btn danger">Sair</button>
+      <nav className="top-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 20px' }}>
+        
+        {/* --- AQUI É O ALVO DO PORTAL --- */}
+        {/* Os botões de "Novo", "Voltar", "Filtros" das páginas aparecerão AQUI magicamente */}
+        <div id="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '15px', flex: 1 }}>
+            {/* Vazio por padrão. As páginas preenchem isso. */}
+        </div>
+
+        {/* Lado Direito: Informações do Usuário (Fixo) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <span className="badge" style={{backgroundColor: '#eef2ff', color: '#3730a3'}}>
+                {user?.nome}
+            </span>
+            <button onClick={logout} className="btn danger" style={{padding: '5px 15px', fontSize: '0.85rem'}}>
+                Sair
+            </button>
+        </div>
       </nav>
     </header>
   );
@@ -63,6 +74,7 @@ function Sidebar({ role }) {
            </>
          )}
          
+         {/* VISÃO DO TESTADOR (EXECUÇÃO) */}
          {role === 'user' && (
            <>
               <div className="nav-section">MINHA ÁREA</div>
@@ -88,7 +100,8 @@ function ProtectedLayout({ roles }) {
       <Sidebar role={user.role} />
       <div className="main-content">
          <TopHeader /> 
-         <div style={{ padding: '0' }}> 
+         {/* Adicionei padding 20px aqui para o conteúdo não colar na borda */}
+         <div style={{ padding: '20px', overflowY: 'auto', height: 'calc(100vh - 60px)' }}> 
             <Outlet />
          </div>
       </div>
