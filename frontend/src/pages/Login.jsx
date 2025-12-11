@@ -85,7 +85,7 @@ export function Login() {
             
             <div className="actions" style={{ gridColumn: '1/-1' }}>
               <button type="submit" className="login-btn primary" disabled={loading}>
-                {loading ? 'A entrar...' : 'Entrar'}
+                {loading ? 'Entrando...' : 'Entrar'}
               </button>
             </div>
           </form>
