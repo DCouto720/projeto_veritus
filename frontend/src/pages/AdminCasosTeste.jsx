@@ -1,6 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react'; // 1. Adicionado useRef
+import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
 import { api } from '../services/api';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
+/* ==========================================================================
+   COMPONENTE: ADMIN CASOS DE TESTE
+   ========================================================================== */
 export function AdminCasosTeste() {
   // --- ESTADOS ---
   const [projetos, setProjetos] = useState([]);
@@ -10,10 +16,12 @@ export function AdminCasosTeste() {
   
   const [selectedProjeto, setSelectedProjeto] = useState('');
   const [loading, setLoading] = useState(false);
-  const [view, setView] = useState('list'); 
+  const [view, setView] = useState('list');
   const [editingId, setEditingId] = useState(null);
 
-  // Estado do Formulário
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [casoToDelete, setCasoToDelete] = useState(null);
+
   const [form, setForm] = useState({
     nome: '',
     descricao: '',
@@ -25,7 +33,36 @@ export function AdminCasosTeste() {
     passos: [{ ordem: 1, acao: '', resultado_esperado: '' }]
   });
 
-  // --- CARREGAMENTO INICIAL ---
+  // --- ESTADOS DA BUSCA CUSTOMIZADA (NOVO) ---
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const wrapperRef = useRef(null);
+
+  // --- LÓGICA DO DROPDOWN ---
+  // Se vazio: mostra os 5 últimos (ID decrescente)
+  // Se tem texto: filtra e mostra até 8 resultados
+  const opcoesParaMostrar = searchTerm === '' 
+    ? [...casos].sort((a, b) => b.id - a.id).slice(0, 5) 
+    : casos.filter(c => c.nome.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 8);
+
+  // --- FILTRO DA LISTA ---
+  const filteredCasos = casos.filter(c => 
+      c.nome.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      c.prioridade.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // --- AUXILIARES ---
+  const truncate = (str, n = 30) => {
+    if (!str) return '';
+    return str.length > n ? str.substr(0, n - 1) + '...' : str;
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '4px',
+    fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box'
+  };
+
+  // --- EFEITOS (Data Fetching & Click Outside) ---
   useEffect(() => {
     const loadBasics = async () => {
       try {
@@ -36,22 +73,31 @@ export function AdminCasosTeste() {
         setProjetos(projData || []);
         setUsuarios(userData || []);
         
-        if (projData && projData.length > 0) {
-          setSelectedProjeto(projData[0].id);
+        const ativos = (projData || []).filter(p => p.status === 'ativo');
+        if (ativos.length > 0) {
+          setSelectedProjeto(ativos[0].id);
         }
       } catch (e) {
-        console.error("Erro ao carregar básicos:", e);
+        toast.error("Erro ao carregar dados básicos.");
       }
     };
     loadBasics();
   }, []);
 
-  // --- MUDANÇA DE PROJETO ---
   useEffect(() => {
-    if (selectedProjeto) {
-      loadDadosProjeto(selectedProjeto);
-    }
+    if (selectedProjeto) loadDadosProjeto(selectedProjeto);
   }, [selectedProjeto]);
+
+  // Fecha sugestões ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [wrapperRef]);
 
   const loadDadosProjeto = async (projId) => {
     setLoading(true);
@@ -63,13 +109,16 @@ export function AdminCasosTeste() {
       setCasos(Array.isArray(casosData) ? casosData : []);
       setCiclos(Array.isArray(ciclosData) ? ciclosData : []);
     } catch (error) {
-      console.error("Erro ao carregar dados:", error);
+      toast.error("Erro ao carregar casos de teste.");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- GESTÃO DO FORMULÁRIO ---
+  const currentProject = projetos.find(p => p.id == selectedProjeto);
+  const isProjectActive = currentProject?.status === 'ativo';
+
+  // --- HANDLERS ---
   const handleReset = () => {
     setForm({
       nome: '', descricao: '', pre_condicoes: '', criterios_aceitacao: '',
@@ -81,6 +130,9 @@ export function AdminCasosTeste() {
   };
 
   const handleNew = () => {
+    if (!isProjectActive) {
+        return toast.warning(`Projeto ${currentProject?.status?.toUpperCase() || 'Inativo'}. Criação bloqueada.`);
+    }
     handleReset();
     setView('form');
   };
@@ -93,7 +145,7 @@ export function AdminCasosTeste() {
       criterios_aceitacao: caso.criterios_aceitacao || '',
       prioridade: caso.prioridade,
       responsavel_id: caso.responsavel_id || '',
-      ciclo_id: '', 
+      ciclo_id: '', // Ciclo é opcional na edição do caso base
       passos: caso.passos && caso.passos.length > 0 
               ? caso.passos.map(p => ({...p})) 
               : [{ ordem: 1, acao: '', resultado_esperado: '' }]
@@ -102,7 +154,8 @@ export function AdminCasosTeste() {
     setView('form');
   };
 
-  // --- STEPS ---
+  const handleCancel = () => { setView('list'); setEditingId(null); };
+
   const addStep = () => {
     setForm(prev => ({
       ...prev,
@@ -111,7 +164,7 @@ export function AdminCasosTeste() {
   };
 
   const removeStep = (index) => {
-    if (form.passos.length === 1) return;
+    if (form.passos.length === 1) return toast.info("O teste precisa de pelo menos 1 passo.");
     const newPassos = form.passos.filter((_, i) => i !== index).map((p, i) => ({ ...p, ordem: i + 1 }));
     setForm(prev => ({ ...prev, passos: newPassos }));
   };
@@ -122,318 +175,387 @@ export function AdminCasosTeste() {
     setForm(prev => ({ ...prev, passos: newPassos }));
   };
 
-  // --- SUBMIT ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedProjeto) return alert("Erro: Nenhum projeto selecionado.");
-    if (!form.nome.trim()) return alert("O Título do teste é obrigatório.");
-    if (form.passos.length === 0 || !form.passos[0].acao.trim()) return alert("Adicione pelo menos 1 passo válido.");
+    if (!selectedProjeto) return toast.error("Erro: Projeto não selecionado.");
+    if (!form.nome || !form.nome.trim()) return toast.warning("O Título do Cenário é obrigatório.");
+    
+    const passosValidos = form.passos.filter(p => p.acao && p.acao.trim() !== '');
+    if (passosValidos.length === 0) return toast.warning("Preencha a 'Ação' de pelo menos um passo.");
 
-    try {
-      const payload = {
+    const payload = {
         ...form,
         projeto_id: parseInt(selectedProjeto),
         responsavel_id: form.responsavel_id ? parseInt(form.responsavel_id) : null,
         ciclo_id: form.ciclo_id ? parseInt(form.ciclo_id) : null,
-        passos: form.passos.filter(p => p.acao.trim() !== '')
-      };
+        passos: passosValidos
+    };
 
+    try {
       if (editingId) {
         await api.put(`/testes/casos/${editingId}`, payload);
-        alert("Teste atualizado com sucesso!");
+        toast.success("Caso de teste atualizado!");
       } else {
         await api.post(`/testes/projetos/${selectedProjeto}/casos`, payload);
-        
-        if (payload.ciclo_id && payload.responsavel_id) {
-             alert(`Teste criado e enviado para execução!`);
-        } else {
-             alert("Teste salvo na biblioteca.");
-        }
+        toast.success("Teste salvo na biblioteca.");
       }
-
       handleReset();
       loadDadosProjeto(selectedProjeto);
-
     } catch (error) {
-      console.error("ERRO:", error);
-      alert("Falha ao salvar. Verifique se todos os campos estão corretos.");
+      toast.error(error.message || "Falha ao salvar caso de teste.");
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm("Tem certeza?")) return;
-    try {
-      await api.delete(`/testes/casos/${id}`);
-      loadDadosProjeto(selectedProjeto);
-    } catch (e) { alert("Erro ao excluir."); }
+  const requestDelete = (caso) => {
+      setCasoToDelete(caso);
+      setIsDeleteModalOpen(true);
   };
 
-  // --- HELPERS VISUAIS ---
-  const renderResponsavel = (id) => {
-      if (!id) return <span style={{color: '#cbd5e1'}}>-</span>;
-      
-      const user = usuarios.find(u => u.id === id);
-      if (!user) return <span style={{color: '#94a3b8'}}>Desconhecido</span>;
-
-      if (!user.ativo) {
-          return (
-              <span className="badge" style={{backgroundColor: '#fee2e2', color: '#b91c1c'}} title="Inativo">
-                  {user.nome.split(' ')[0]} (Inativo)
-              </span>
-          );
+  const confirmDelete = async () => {
+      if (!casoToDelete) return;
+      try {
+        await api.delete(`/testes/casos/${casoToDelete.id}`);
+        toast.success("Caso de teste excluído (histórico limpo).");
+        loadDadosProjeto(selectedProjeto);
+      } catch (e) { 
+          toast.error("Erro ao excluir. Tente novamente."); 
+      } finally {
+          setCasoToDelete(null);
       }
-      
-      return (
-          <span className="badge" style={{backgroundColor: '#eef2ff', color: '#3730a3'}}>
-              {user.nome.split(' ')[0]}
-          </span>
-      );
   };
 
-  const usuariosAtivos = usuarios.filter(u => u.ativo);
+  const navbarTarget = document.getElementById('header-actions');
 
-  // --- RENDERIZAÇÃO ---
+  /* ==========================================================================
+     RENDERIZAÇÃO
+     ========================================================================== */
   return (
     <main className="container">
-      
-      {/* --- CSS PARA O HOVER DA LINHA --- */}
       <style>{`
-        tr.hover-row {
-            transition: background-color 0.2s;
+        .hover-row { transition: background-color 0.2s ease-in-out; cursor: pointer;}
+        .hover-row:hover { background-color: #f1f5f9 !important; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }
+        
+        /* CSS DO DROPDOWN (Igual aos outros) */
+        .custom-dropdown {
+          position: absolute;
+          top: 105%;
+          left: 0;
+          width: 100%;
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+          z-index: 50;
+          max-height: 250px;
+          overflow-y: auto;
+          list-style: none;
+          padding: 5px 0;
+          margin: 0;
         }
-        tr.hover-row:hover {
-            background-color: #f1f5f9 !important;
-            cursor: pointer;
+        .custom-dropdown li {
+          padding: 10px 15px;
+          border-bottom: 1px solid #f1f5f9;
+          cursor: pointer;
+          font-size: 0.9rem;
+          color: #334155;
+          display: flex;
+          align-items: center;
+        }
+        .custom-dropdown li:last-child { border-bottom: none; }
+        .custom-dropdown li:hover { 
+            background-color: #f1f5f9; 
+            color: #0f172a; 
+            font-weight: 500;
         }
       `}</style>
+      
+      <ConfirmationModal 
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={confirmDelete}
+        title="Excluir Caso de Teste?"
+        message={`Deseja excluir "${casoToDelete?.nome}"? Todo o histórico de execução vinculado será apagado.`}
+        confirmText="Sim, Excluir"
+        isDanger={true}
+      />
 
-      {/* HEADER DA PÁGINA */}
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingBottom: '15px', borderBottom: '1px solid #e5e7eb'}}>
-        <div>
-           <h2 style={{margin: 0, color: '#1e293b'}}>Casos de Testes</h2>
-           <p className="muted" style={{margin: '5px 0 0 0'}}>Gerencie e planeje os cenários de teste do projeto.</p>
-        </div>
-        
+      {/* --- NAVBAR SUPERIOR (Portal) --- */}
+      {navbarTarget && createPortal(
         <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
-           <div style={{textAlign: 'right'}}>
-             <label style={{display: 'block', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', marginBottom: '2px'}}>PROJETO ATIVO</label>
+           <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+             <span style={{fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase'}}>Projeto:</span>
              <select 
                 value={selectedProjeto} 
                 onChange={e => setSelectedProjeto(e.target.value)}
-                style={{padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', minWidth: '200px', fontWeight: 500}}
+                style={{
+                    padding: '6px 10px', 
+                    borderRadius: '4px', 
+                    border: '1px solid #cbd5e1', 
+                    fontSize: '0.9rem', 
+                    backgroundColor: '#fff',
+                    maxWidth: '300px'
+                }}
              >
-                {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                {projetos.filter(p => p.status === 'ativo').map(p => (
+                    <option key={p.id} value={p.id} title={p.nome}>
+                        {truncate(p.nome, 30)}
+                    </option>
+                ))}
              </select>
            </div>
-           
            {view === 'list' ? (
-             <button onClick={handleNew} className="btn primary" style={{height: '40px', padding: '0 20px'}}>
-               Novo Teste
+             <button 
+                onClick={handleNew} 
+                className="btn primary" 
+                disabled={!isProjectActive} 
+                style={{height: '34px', opacity: isProjectActive ? 1 : 0.5, cursor: isProjectActive ? 'pointer' : 'not-allowed', fontSize: '0.9rem'}}
+             >
+                Novo Cenário
              </button>
            ) : (
-             <button onClick={handleReset} className="btn" style={{height: '40px'}}>Voltar à Lista</button>
+             <button onClick={handleCancel} className="btn" style={{height: '34px', fontSize: '0.9rem'}}>Voltar</button>
            )}
-        </div>
-      </div>
+        </div>,
+        navbarTarget
+      )}
 
+      {/* --- FORMULÁRIO --- */}
       {view === 'form' && (
-        <div style={{maxWidth: '900px', margin: '0 auto'}}>
+        <div style={{maxWidth: '100%', margin: '0 auto'}}>
           <form onSubmit={handleSubmit}>
-            
-            {/* CARD 1: INFORMAÇÕES BÁSICAS */}
-            <section className="card" style={{marginBottom: '20px'}}>
-              <h3 style={{marginTop: 0, marginBottom: '20px', color: '#334155', fontSize: '1.1rem'}}>
-                Detalhes do Cenário
-              </h3>
-              
-              <div className="form-grid">
-                  <div style={{gridColumn: '1/-1'}}>
-                    <label>Título do Cenário <span style={{color:'red'}}>*</span></label>
+            {/* Seção de Detalhes */}
+            <section className="card" style={{marginBottom: '20px', padding: '25px'}}>
+              <h3 style={{marginTop: 0, marginBottom: '20px', color: '#334155', fontSize: '1.1rem', fontWeight: 700}}>Detalhes do Cenário</h3>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
+                  <div>
+                    <label style={{display: 'block', marginBottom: '8px', fontWeight: 600, color: '#374151'}}>Título do Cenário <span style={{color:'#ef4444'}}>*</span></label>
                     <input 
-                       required 
                        value={form.nome} 
                        onChange={e => setForm({...form, nome: e.target.value})} 
-                       placeholder="Ex: Validar login com credenciais inválidas"
-                       style={{fontSize: '1.1rem', fontWeight: 500}}
+                       placeholder="Ex: Validar pagamento"
+                       style={{...inputStyle, fontSize: '1rem'}}
                     />
                   </div>
-                  
-                  <div>
-                    <label>Prioridade</label>
-                    <select value={form.prioridade} onChange={e => setForm({...form, prioridade: e.target.value})}>
-                       <option value="alta"> Alta</option>
-                       <option value="media"> Média</option>
-                       <option value="baixa"> Baixa</option>
-                    </select>
+                  <div className="form-grid">
+                      <div>
+                        <label>Prioridade</label>
+                        <select 
+                            value={form.prioridade} 
+                            onChange={e => setForm({...form, prioridade: e.target.value})}
+                            style={{...inputStyle, backgroundColor: '#f3f4f6'}}
+                        >
+                           <option value="alta">Alta</option>
+                           <option value="media">Média</option>
+                           <option value="baixa">Baixa</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label>Pré-condições</label>
+                        <input 
+                          value={form.pre_condicoes} 
+                          onChange={e => setForm({...form, pre_condicoes: e.target.value})} 
+                          style={inputStyle}
+                        />
+                      </div>
                   </div>
-
                   <div>
-                    <label>Pré-condições</label>
-                    <input value={form.pre_condicoes} onChange={e => setForm({...form, pre_condicoes: e.target.value})} placeholder="Ex: Usuário na Home" />
-                  </div>
-
-                  <div style={{gridColumn: '1/-1'}}>
-                    <label>Critérios de Aceitação / Objetivo</label>
+                    <label style={{display: 'block', marginBottom: '8px', fontWeight: 600, color: '#374151'}}>Objetivo / Critérios</label>
                     <input
                        value={form.criterios_aceitacao} 
                        onChange={e => setForm({...form, criterios_aceitacao: e.target.value})}
-                       placeholder="O que deve acontecer para o teste passar?"
+                       style={inputStyle}
                     />
                   </div>
               </div>
             </section>
 
-            {/* CARD 2: PLANEJAMENTO */}
-            <section className="card" style={{marginBottom: '20px'}}>
-              <h3 style={{marginTop: 0, marginBottom: '20px', color: '#334155', fontSize: '1.1rem'}}>
-                Planejamento & Alocação
-              </h3>
+            {/* Seção de Alocação */}
+            <section className="card" style={{marginBottom: '20px', padding: '25px'}}>
+              <h3 style={{marginTop: 0, marginBottom: '20px', color: '#334155', fontSize: '1.1rem', fontWeight: 700}}>Alocação (Opcional)</h3>
               <div className="form-grid">
                   <div>
-                    <label>Alocar ao Ciclo (Sprint)</label>
-                    <select value={form.ciclo_id} onChange={e => setForm({...form, ciclo_id: e.target.value})}>
+                    <label>Ciclo (Sprint)</label>
+                    <select 
+                        value={form.ciclo_id} 
+                        onChange={e => setForm({...form, ciclo_id: e.target.value})}
+                        style={{...inputStyle, backgroundColor: '#f3f4f6'}}
+                        disabled={!!editingId}
+                    >
                        <option value="">Apenas Salvar na Biblioteca</option>
-                       {ciclos.map(c => <option key={c.id} value={c.id}>{c.nome} ({c.status})</option>)}
+                       {ciclos.map(c => <option key={c.id} value={c.id}>{truncate(c.nome, 20)} ({c.status})</option>)}
                     </select>
                   </div>
                   <div>
-                    <label>Responsável (Testador)</label>
-                    <select value={form.responsavel_id} onChange={e => setForm({...form, responsavel_id: e.target.value})}>
-                       <option value="">Definir depois</option>
-                       {usuariosAtivos.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                    <label>Responsável (Apenas Testadores)</label>
+                    <select 
+                        value={form.responsavel_id} 
+                        onChange={e => setForm({...form, responsavel_id: e.target.value})}
+                        style={{...inputStyle, backgroundColor: '#f3f4f6'}}
+                    >
+                        <option value="">Definir depois</option>
+                        {usuarios
+                            .filter(u => u.ativo && u.nivel_acesso?.nome === 'user')
+                            .map(u => (
+                                <option key={u.id} value={u.id}>
+                                    {truncate(u.nome, 30)}
+                                </option>
+                            ))
+                        }
                     </select>
-                  </div>
+                </div>
               </div>
-              <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '10px', fontStyle: 'italic'}}>
-                  * Ao selecionar ambos, o teste será enviado automaticamente para a fila de execução do responsável.
-              </p>
             </section>
 
-            {/* CARD 3: PASSOS */}
-            <section className="card">
-               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
-                 <h3 style={{margin: 0, color: '#334155', fontSize: '1.1rem'}}>Passos</h3>
-                 <button type="button" onClick={addStep} className="btn small" style={{backgroundColor: '#f1f5f9', color: '#334155'}}>+ Passo</button>
+            {/* Seção de Passos */}
+            <section className="card" style={{padding: '25px'}}>
+               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
+                 <h3 style={{margin: 0, color: '#334155', fontSize: '1.1rem', fontWeight: 700}}>Passos</h3>
+                 <button type="button" onClick={addStep} className="btn" style={{backgroundColor: '#eef2ff', color: '#3730a3'}}>+ Adicionar Passo</button>
                </div>
-               
                <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
                  {form.passos.map((passo, idx) => (
-                   <div key={idx} style={{display: 'flex', gap: '15px', alignItems: 'flex-start', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0'}}>
-                      <div style={{
-                          height: '28px', 
-                          borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                          fontSize: '0.85rem', fontWeight: 'bold', marginTop: '3px'
-                      }}>
-                        {idx + 1}
-                      </div>
-                      
-                      <div style={{flex: 1}}>
-                         <input 
-                            placeholder="Ação (O que o testador deve fazer)" 
+                   <div key={idx} style={{display: 'grid', gridTemplateColumns: '40px 1fr 50px', gap: '15px', alignItems: 'start', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0'}}>
+                      <div style={{fontSize: '1.1rem', fontWeight: 'bold', color: '#64748b', textAlign: 'center', paddingTop: '8px'}}>{idx + 1}</div>
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                          <input 
+                            placeholder="Ação" 
                             value={passo.acao} 
                             onChange={e => updateStep(idx, 'acao', e.target.value)}
-                            style={{width: '100%', marginBottom: '8px', fontWeight: 500, border: '1px solid #cbd5e1'}} 
-                         />
-                         <input 
+                            style={{...inputStyle, backgroundColor: 'white'}} 
+                          />
+                          <input 
                             placeholder="Resultado Esperado" 
                             value={passo.resultado_esperado} 
                             onChange={e => updateStep(idx, 'resultado_esperado', e.target.value)}
-                            style={{width: '100%', fontSize: '0.9rem', color: '#059669', border: '1px solid #cbd5e1'}} 
-                         />
+                            style={{...inputStyle, backgroundColor: 'white', color: '#059669'}} 
+                          />
                       </div>
-                      
-                      <button 
-                        type="button" 
-                        onClick={() => removeStep(idx)} 
-                        className="btn danger" 
-                        style={{padding: '5px 10px', height: '30px'}}
-                        title="Remover passo"
-                      >
-                        X
-                      </button>
+                      <div style={{textAlign: 'right'}}>
+                          <button type="button" onClick={() => removeStep(idx)} className="btn" style={{backgroundColor: '#fee2e2', color: '#b91c1c', width: '36px', height: '36px', padding: 0}}>✕</button>
+                      </div>
                    </div>
                  ))}
                </div>
-
-               <div className="actions" style={{marginTop: '30px', borderTop: '1px solid #f1f5f9', paddingTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px'}}>
-                  <button type="button" onClick={handleReset} className="btn large">Cancelar</button>
-                  <button type="submit" className="btn primary large">
-                    {editingId ? 'Salvar Alterações' : 'Criar Caso de Teste'}
-                  </button>
+               <div className="actions" style={{marginTop: '30px', borderTop: '1px solid #e5e7eb', paddingTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '15px'}}>
+                  <button type="button" onClick={handleReset} className="btn" style={{backgroundColor: '#fff', border: '1px solid #cbd5e1', color: '#475569'}}>Cancelar</button>
+                  <button type="submit" className="btn primary">{editingId ? 'Salvar Alterações' : 'Salvar Caso de Teste'}</button>
                </div>
             </section>
-
           </form>
         </div>
       )}
 
-      {/* LISTAGEM DE CASOS */}
+      {/* --- LISTAGEM --- */}
       {view === 'list' && (
-        <section className="card">
-           {loading ? <p>Carregando biblioteca...</p> : (
+        <section className="card" style={{marginTop: '20px'}}>
+           
+           {/* HEADER DE BUSCA COM DROPDOWN */}
+           <div style={{paddingBottom: '15px', borderBottom: '1px solid #f1f5f9', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+               <span style={{fontWeight: 600, color: '#64748b'}}>
+                   {filteredCasos.length} caso(s) encontrado(s)
+               </span>
+               
+               <div ref={wrapperRef} style={{position: 'relative', width: '250px'}}>
+                    <input 
+                        type="text" 
+                        placeholder="Buscar cenário..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onFocus={() => setShowSuggestions(true)}
+                        style={{
+                            width: '100%',
+                            padding: '8px 30px 8px 10px', 
+                            borderRadius: '6px', 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '0.85rem',
+                            height: '36px',
+                            boxSizing: 'border-box'
+                        }}
+                    />
+                    <span style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)'}}>🔍</span>
+
+                    {/* MENU SUSPENSO */}
+                    {showSuggestions && opcoesParaMostrar.length > 0 && (
+                        <ul className="custom-dropdown">
+                            {opcoesParaMostrar.map(c => (
+                                <li 
+                                    key={c.id} 
+                                    onClick={() => {
+                                        setSearchTerm(c.nome);
+                                        setShowSuggestions(false);
+                                    }}
+                                >
+                                    <span>
+                                        {truncate(c.nome, 25)}
+                                        <span style={{fontSize:'0.75rem', color:'#9ca3af', marginLeft:'8px'}}>
+                                            ({c.prioridade})
+                                        </span>
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+               </div>
+           </div>
+
+           {loading ? <p style={{padding:'20px', textAlign:'center'}}>Carregando...</p> : (
              <div className="table-wrap">
                {casos.length === 0 ? (
                  <div style={{textAlign: 'center', padding: '40px', color: '#94a3b8'}}>
-                    <p style={{fontSize: '1.2rem'}}>Nenhum caso de teste encontrado neste projeto.</p>
-                    <button onClick={handleNew} className="btn primary">Crie o primeiro teste agora</button>
+                    <p>Nenhum caso de teste para este projeto.</p>
+                    {projetos.length > 0 && isProjectActive && <button onClick={handleNew} className="btn primary" style={{marginTop:'10px'}}>Criar Primeiro</button>}
                  </div>
                ) : (
                  <table>
                    <thead>
                      <tr>
-                       <th style={{width: '60px'}}>ID</th>
-                       <th>Cenário</th>
-                       <th>Prioridade</th>
-                       <th>Testador</th>
-                       <th>Passos</th>
+                       <th style={{width: '50px', textAlign: 'left'}}>ID</th>
+                       <th style={{textAlign: 'left'}}>Cenário</th>
+                       <th style={{textAlign: 'center'}}>Prioridade</th>
+                       <th style={{textAlign: 'left'}}>Responsável</th>
+                       <th style={{textAlign: 'center'}}>Passos</th>
                        <th style={{textAlign: 'right'}}>Ações</th>
                      </tr>
                    </thead>
                    <tbody>
-                     {casos.map(c => (
-                       <tr 
-                          key={c.id} 
-                          className="hover-row" // CLASSE DO HOVER
-                          onClick={() => handleEdit(c)} // CLIQUE NA LINHA EDITA
-                          title="Clique para editar"
-                       >
-                         <td style={{color: '#64748b'}}>#{c.id}</td>
-                         <td>
-                           <div style={{fontWeight: 600, color: '#334155'}}>{c.nome}</div>
-                           {c.pre_condicoes && <div style={{fontSize:'0.8rem', color:'#94a3b8'}}>Pré: {c.pre_condicoes}</div>}
-                         </td>
-                         <td>
-                            <span className={`badge ${c.prioridade === 'alta' ? 'off' : 'on'}`} 
-                                  style={{
-                                    backgroundColor: c.prioridade === 'alta' ? '#fef2f2' : (c.prioridade === 'media' ? '#fffbeb' : '#f0fdf4'), 
-                                    color: c.prioridade === 'alta' ? '#dc2626' : (c.prioridade === 'media' ? '#b45309' : '#166534'),
-                                    border: '1px solid rgba(0,0,0,0.05)'
-                                  }}>
-                                {c.prioridade.toUpperCase()}
-                            </span>
-                         </td>
-                         
-                         <td>
-                             {renderResponsavel(c.responsavel_id)}
-                         </td>
-                         
-                         <td>{c.passos?.length || 0}</td>
-                         
-                         <td style={{textAlign: 'right'}}>
-                            {/* Botão de editar removido, pois a linha inteira edita */}
-                            <button 
-                                onClick={(e) => { 
-                                    e.stopPropagation(); // IMPEDE QUE ABRA A EDIÇÃO AO EXCLUIR
-                                    handleDelete(c.id); 
-                                }} 
-                                className="btn danger" 
-                                style={{padding: '6px 12px'}}
-                            >
-                                Excluir
-                            </button>
-                         </td>
-                       </tr>
-                     ))}
+                     {filteredCasos.length === 0 ? (
+                       <tr><td colSpan="6" style={{textAlign:'center', padding:'20px', color: '#64748b'}}>Nenhum caso encontrado para "{searchTerm}".</td></tr>
+                     ) : (
+                       filteredCasos.map(c => (
+                           <tr key={c.id} className="hover-row" onClick={() => handleEdit(c)} title="Clique para editar">
+                               <td style={{color: '#64748b', verticalAlign: 'middle'}}>#{c.id}</td>
+                               <td style={{verticalAlign: 'middle'}}>
+                                   <div style={{fontWeight: 600}} title={c.nome}>
+                                       {truncate(c.nome, 45)}
+                                   </div>
+                               </td>
+                               <td style={{textAlign: 'center', verticalAlign: 'middle'}}>
+                                   <span className="badge" style={{backgroundColor: '#f3f4f6'}}>
+                                       {c.prioridade}
+                                   </span>
+                               </td>
+                               <td style={{verticalAlign: 'middle'}}>
+                                   {c.responsavel ? truncate(c.responsavel.nome, 20) : '-'}
+                               </td>
+                               <td style={{textAlign: 'center', verticalAlign: 'middle'}}>
+                                   {c.passos?.length || 0}
+                               </td>
+                               <td style={{textAlign: 'right', verticalAlign: 'middle'}}>
+                                   <button 
+                                       onClick={(e) => { 
+                                           e.stopPropagation(); 
+                                           requestDelete(c); 
+                                       }} 
+                                       className="btn danger small"
+                                       title="Excluir"
+                                   >
+                                       🗑️
+                                   </button>
+                               </td>
+                           </tr>
+                       ))
+                     )}
                    </tbody>
                  </table>
                )}

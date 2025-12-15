@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { api } from '../services/api';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 export function AdminModulos() {
   const [modulos, setModulos] = useState([]);
@@ -7,7 +9,36 @@ export function AdminModulos() {
   const [form, setForm] = useState({ nome: '', descricao: '', sistema_id: '' });
   const [editingId, setEditingId] = useState(null);
 
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [moduloToDelete, setModuloToDelete] = useState(null);
+    
+  // --- ESTADOS DA BUSCA CUSTOMIZADA ---
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const wrapperRef = useRef(null); 
+
+  // Filtro da tabela
+  const filteredModulos = modulos.filter(m => 
+      m.nome.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Truncate (cortar texto)
+  const truncate = (str, n = 30) => {
+    return (str && str.length > n) ? str.substr(0, n - 1) + '...' : str;
+  };
+
   useEffect(() => { loadData(); }, []);
+
+  // Fecha sugestões ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [wrapperRef]);
 
   const loadData = async () => {
     try {
@@ -17,23 +48,48 @@ export function AdminModulos() {
         ]);
         setModulos(mods);
         setSistemas(sis);
+        
         const ativos = sis.filter(s => s.ativo);
-        if (ativos.length > 0) setForm(f => ({ ...f, sistema_id: ativos[0].id }));
-    } catch (e) { console.error(e); }
+        if (ativos.length > 0 && !form.sistema_id) {
+            setForm(f => ({ ...f, sistema_id: ativos[0].id }));
+        }
+    } catch (e) { 
+        console.error(e); 
+        toast.error("Erro ao carregar dados.");
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.sistema_id) return toast.warning("Selecione um Sistema Pai.");
+
+    const nomeNormalizado = form.nome.trim().toLowerCase();
+    const sistemaIdSelecionado = parseInt(form.sistema_id);
+
+    const duplicado = modulos.some(m => {
+        const mesmoSistema = m.sistema_id === sistemaIdSelecionado;
+        const mesmoNome = m.nome.trim().toLowerCase() === nomeNormalizado;
+        const naoEhOProprio = m.id !== editingId;
+        return mesmoSistema && mesmoNome && naoEhOProprio;
+    });
+
+    if (duplicado) return toast.warning("Já existe um módulo com este nome neste sistema.");
+
     try {
-      const payload = { ...form, sistema_id: parseInt(form.sistema_id) };
-      if (editingId) await api.put(`/modulos/${editingId}`, payload);
-      else await api.post("/modulos/", { ...payload, ativo: true });
-      
-      alert("Salvo com sucesso!");
+      const payload = { ...form, sistema_id: sistemaIdSelecionado };
+      if (editingId) {
+          await api.put(`/modulos/${editingId}`, payload);
+          toast.success("Módulo atualizado!");
+      } else {
+          await api.post("/modulos/", { ...payload, ativo: true });
+          toast.success("Módulo criado!");
+      }
       handleCancel();
       const updatedMods = await api.get("/modulos/");
       setModulos(updatedMods);
-    } catch (error) { alert("Erro ao salvar."); }
+    } catch (error) { 
+        toast.error(error.message || "Erro ao salvar módulo."); 
+    }
   };
 
   const handleCancel = () => {
@@ -42,84 +98,199 @@ export function AdminModulos() {
   };
 
   const handleSelectRow = (modulo) => {
-      setForm({nome: modulo.nome, descricao: modulo.descricao, sistema_id: modulo.sistema_id});
+      setForm({ nome: modulo.nome, descricao: modulo.descricao, sistema_id: modulo.sistema_id });
       setEditingId(modulo.id);
   };
-
+  
   const toggleActive = async (modulo) => {
       try {
-          await api.put(`/modulos/${modulo.id}`, { ativo: !modulo.ativo });
-          const updatedMods = await api.get("/modulos/");
-          setModulos(updatedMods);
-      } catch(e) { alert("Erro ao alterar status."); }
+          const novoStatus = !modulo.ativo;
+          await api.put(`/modulos/${modulo.id}`, { ativo: novoStatus });
+          toast.success(`Módulo ${novoStatus ? 'ativado' : 'desativado'}.`);
+          setModulos(prev => prev.map(m => m.id === modulo.id ? { ...m, ativo: novoStatus } : m));
+      } catch(e) { toast.error("Erro ao alterar status."); }
   };
 
-  const getSistemaName = (id) => sistemas.find(s => s.id === id)?.nome || id;
+  const requestDelete = (modulo) => {
+      setModuloToDelete(modulo);
+      setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+      if (!moduloToDelete) return;
+      try {
+          await api.delete(`/modulos/${moduloToDelete.id}`);
+          toast.success("Módulo excluído.");
+          setModulos(prev => prev.filter(m => m.id !== moduloToDelete.id));
+          if (editingId === moduloToDelete.id) handleCancel();
+      } catch (error) { toast.error(error.message || "Não foi possível excluir."); } 
+      finally { setModuloToDelete(null); }
+  };
+
+  const getSistemaName = (id) => sistemas.find(s => s.id === id)?.nome || 'Sistema Removido';
   const sistemasAtivos = sistemas.filter(s => s.ativo);
+
+  // Lógica: Se vazio, pega os 5 últimos (maior ID). Se tem texto, filtra.
+  const opcoesParaMostrar = searchTerm === '' 
+    ? [...modulos].sort((a, b) => b.id - a.id).slice(0, 5) 
+    : modulos.filter(m => m.nome.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 8);
 
   return (
     <main className="container grid">
+      {/* CSS DO MENU CUSTOMIZADO SIMPLIFICADO */}
+      <style>{`
+        .custom-dropdown {
+          position: absolute;
+          top: 105%;
+          left: 0;
+          width: 100%;
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+          z-index: 50;
+          max-height: 250px;
+          overflow-y: auto;
+          list-style: none;
+          padding: 5px 0; /* Padding leve na lista */
+          margin: 0;
+        }
+        .custom-dropdown li {
+          padding: 10px 15px; /* Espaçamento interno confortável */
+          border-bottom: 1px solid #f1f5f9;
+          cursor: pointer;
+          font-size: 0.9rem;
+          color: #334155;
+          display: flex;
+          align-items: center; /* Centraliza texto verticalmente */
+        }
+        .custom-dropdown li:last-child { border-bottom: none; }
+        .custom-dropdown li:hover { 
+            background-color: #f1f5f9; 
+            color: #0f172a; 
+            font-weight: 500; /* Leve destaque ao passar o mouse */
+        }
+      `}</style>
+      
+      <ConfirmationModal 
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={confirmDelete}
+        title="Excluir Módulo?"
+        message={`Tem a certeza que deseja excluir "${moduloToDelete?.nome}"?`}
+        confirmText="Sim, Excluir"
+        isDanger={true}
+      />
+
       <section className="card">
         <h2 className="section-title">{editingId ? 'Editar Módulo' : 'Novo Módulo'}</h2>
         <form onSubmit={handleSubmit}>
-          <div className="form-grid">
+          <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
             <div>
                 <label>Sistema Pai</label>
-                <select value={form.sistema_id} onChange={e => setForm({...form, sistema_id: e.target.value})} required>
-                    {sistemasAtivos.length === 0 && <option value="">Nenhum sistema ativo disponível</option>}
-                    {sistemasAtivos.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                <select value={form.sistema_id} onChange={e => setForm({...form, sistema_id: e.target.value})}>
+                    <option value="">Selecione...</option>
+                    {sistemasAtivos.map(s => <option key={s.id} value={s.id}>{truncate(s.nome)}</option>)}
                 </select>
             </div>
             <div>
                 <label>Nome do Módulo</label>
                 <input required value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} placeholder="Ex: Contas a Pagar" />
             </div>
-            <div style={{gridColumn: '1/-1'}}>
+            <div>
                 <label>Descrição</label>
-                <input value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} />
+                <input value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} placeholder="Descrição..." />
             </div>
           </div>
-          <div className="actions" style={{marginTop: '15px'}}>
-            <button type="submit" className="btn primary">{editingId ? 'Atualizar' : 'Cadastrar'}</button>
-            {editingId && <button type="button" onClick={handleCancel} className="btn" style={{marginLeft:'10px'}}>Cancelar Seleção</button>}
+          <div className="actions" style={{marginTop: '15px', display: 'flex', gap: '10px'}}>
+            <button type="submit" className="btn primary">{editingId ? 'Atualizar' : 'Salvar'}</button>
+            {editingId && <button type="button" onClick={handleCancel} className="btn">Cancelar</button>}
           </div>
         </form>
       </section>
 
       <section className="card">
-        <h2 className="section-title">Módulos Cadastrados</h2>
+        {/* BUSCA COM DROPDOWN CUSTOMIZADO */}
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '15px'}}>
+            <h2 className="section-title" style={{margin: 0, whiteSpace: 'nowrap'}}>Módulos Cadastrados</h2>
+            
+            <div ref={wrapperRef} style={{position: 'relative', width: '300px'}}>
+                <input 
+                    type="text" 
+                    placeholder="Pesquisar..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={() => setShowSuggestions(true)}
+                    style={{
+                        width: '100%',
+                        padding: '10px 40px 10px 15px', 
+                        borderRadius: '6px', 
+                        border: '1px solid #333',
+                        fontSize: '0.9rem',
+                        height: '42px',
+                        boxSizing: 'border-box'
+                    }}
+                />
+                <span style={{position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8'}}>🔍</span>
+                
+                {/* MENU SUSPENSO - SOMENTE NOMES */}
+                {showSuggestions && opcoesParaMostrar.length > 0 && (
+                    <ul className="custom-dropdown">
+                        {opcoesParaMostrar.map(m => (
+                            <li 
+                                key={m.id} 
+                                onClick={() => {
+                                    setSearchTerm(m.nome);
+                                    setShowSuggestions(false);
+                                }}
+                            >
+                                {/* EXIBE APENAS O NOME DO MÓDULO, COM LIMITE DE CARACTERES */}
+                                {truncate(m.nome, 30)}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        </div>
+
         <div className="table-wrap">
-            <table>
-                <thead><tr><th>Sistema</th><th>Módulo</th><th>Status</th></tr></thead>
-                <tbody>
-                    {modulos.map(m => (
-                        <tr 
-                            key={m.id} 
-                            onClick={() => handleSelectRow(m)}
-                            className={editingId === m.id ? 'selected' : 'selectable'}
-                            style={{opacity: m.ativo ? 1 : 0.6}}
-                        >
-                            <td><span className="badge" style={{backgroundColor: '#e0f2fe', color: '#0369a1'}}>{getSistemaName(m.sistema_id)}</span></td>
-                            <td><strong>{m.nome}</strong></td>
-                            
-                            <td>
-                                <span 
-                                    onClick={(e) => { e.stopPropagation(); toggleActive(m); }}
-                                    className="badge"
-                                    title="Clique para alternar"
-                                    style={{
-                                        cursor: 'pointer',
-                                        backgroundColor: m.ativo ? '#eef2ff' : '#fee2e2', 
-                                        color: m.ativo ? '#3730a3' : '#b91c1c'
-                                    }}
-                                >
-                                    {m.ativo ? 'Ativo' : 'Inativo'}
-                                </span>
-                            </td>
+            {modulos.length === 0 ? <p className="muted" style={{textAlign:'center', padding:'20px'}}>Nenhum módulo cadastrado.</p> : (
+                <table>
+                    <thead>
+                        <tr>
+                            <th style={{textAlign: 'left'}}>Módulo</th>
+                            <th style={{textAlign: 'left'}}>Sistema</th>
+                            <th style={{textAlign: 'center'}}>Status</th>
+                            <th style={{textAlign: 'right'}}>Ações</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {filteredModulos.length === 0 ? (
+                             <tr><td colSpan="4" style={{textAlign:'center', padding:'20px'}}>Nada encontrado.</td></tr>
+                        ) : (
+                            filteredModulos.map(m => (
+                                <tr key={m.id} onClick={() => handleSelectRow(m)} className={editingId === m.id ? 'selected' : 'selectable'} style={{opacity: m.ativo ? 1 : 0.6}}>
+                                    <td style={{verticalAlign: 'middle'}}>
+                                        <strong title={m.nome}>{truncate(m.nome)}</strong>
+                                        <div className="muted" style={{fontSize: '0.8rem'}} title={m.descricao}>{truncate(m.descricao, 40)}</div>
+                                    </td>
+                                    <td style={{verticalAlign: 'middle'}}>
+                                        <span className="badge" style={{backgroundColor: '#e0f2fe', color: '#0369a1'}}>{truncate(getSistemaName(m.sistema_id), 20)}</span>
+                                    </td>
+                                    <td style={{textAlign: 'center', verticalAlign: 'middle'}}>
+                                        <span onClick={(e) => { e.stopPropagation(); toggleActive(m); }} className={`badge ${m.ativo ? 'on' : 'off'}`} style={{cursor: 'pointer'}}>
+                                            {m.ativo ? 'Ativo' : 'Inativo'}
+                                        </span>                                        
+                                    </td>
+                                    <td style={{textAlign: 'right', verticalAlign: 'middle'}}>
+                                        <button onClick={(e) => { e.stopPropagation(); requestDelete(m); }} className="btn danger small">🗑️</button>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            )}
         </div>
       </section>
     </main>

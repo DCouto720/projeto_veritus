@@ -1,3 +1,4 @@
+# backend/app/repositories/teste_repository.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -7,7 +8,7 @@ from sqlalchemy import func, delete, update as sqlalchemy_update
 from app.models.testing import (
     CicloTeste, CasoTeste, PassoCasoTeste, 
     ExecucaoTeste, ExecucaoPasso, 
-    StatusExecucaoEnum
+    StatusExecucaoEnum, Defeito
 )
 from app.models.usuario import Usuario 
 
@@ -20,6 +21,15 @@ class TesteRepository:
         self.db = db
 
     # --- CASOS DE TESTE ---
+
+    async def get_caso_by_nome_projeto(self, nome: str, projeto_id: int) -> Optional[CasoTeste]:
+        query = select(CasoTeste).where(
+            CasoTeste.nome == nome, 
+            CasoTeste.projeto_id == projeto_id
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
     async def create_caso_teste(self, projeto_id: int, caso_data: CasoTesteCreate) -> CasoTeste:
         db_caso = CasoTeste(
             projeto_id=projeto_id,
@@ -75,61 +85,139 @@ class TesteRepository:
         return result.scalars().all()
     
     async def update_caso_teste(self, caso_id: int, dados: dict) -> Optional[CasoTeste]:
-        if 'passos' in dados:
-            del dados['passos'] 
+        passos_data = dados.pop('passos', None)
 
+        # 1. Atualiza dados do Caso
         query = (
             sqlalchemy_update(CasoTeste)
             .where(CasoTeste.id == caso_id)
             .values(**dados)
-            .returning(CasoTeste.id)
+            .returning(CasoTeste.id) # Garante que retornou ID
         )
         result = await self.db.execute(query)
-        await self.db.commit()
-        
         updated_id = result.scalars().first()
+        
+        # 2. Atualiza Passos
+        if updated_id and passos_data is not None:
+            for passo in passos_data:
+                if 'id' in passo and passo['id']:
+                    # Atualiza passo existente
+                    await self.db.execute(
+                        sqlalchemy_update(PassoCasoTeste)
+                        .where(PassoCasoTeste.id == passo['id'])
+                        .values(
+                            acao=passo['acao'], 
+                            resultado_esperado=passo['resultado_esperado'],
+                            ordem=passo['ordem']
+                        )
+                    )
+                else:
+                    # Cria novo passo
+                    novo_passo = PassoCasoTeste(
+                        caso_teste_id=caso_id,
+                        acao=passo['acao'],
+                        resultado_esperado=passo['resultado_esperado'],
+                        ordem=passo['ordem']
+                    )
+                    self.db.add(novo_passo)
+            
+        # 3. Commit de tudo
+        await self.db.commit()
+
+        # 4. Retorna objeto completo (com responsável carregado)
         if updated_id:
+             # Pequeno truque: expire_all garante que vamos buscar do banco e não do cache velho
+             self.db.expire_all() 
              return await self.get_caso_teste_by_id(updated_id)
+        
         return None
 
+    # --- CORREÇÃO AQUI: DELETE EM CASCATA MANUAL ---
     async def delete_caso_teste(self, caso_id: int) -> bool:
+        # 1. Encontrar e apagar execuções vinculadas (e seus passos/defeitos)
+        # O banco pode ter cascade configurado, mas se não tiver, forçamos aqui.
+        
+        # Busca execuções deste caso
+        query_execs = select(ExecucaoTeste.id).where(ExecucaoTeste.caso_teste_id == caso_id)
+        result_execs = await self.db.execute(query_execs)
+        execs_ids = result_execs.scalars().all()
+
+        if execs_ids:
+            # Apaga passos executados
+            await self.db.execute(delete(ExecucaoPasso).where(ExecucaoPasso.execucao_teste_id.in_(execs_ids)))
+            # Apaga defeitos
+            await self.db.execute(delete(Defeito).where(Defeito.execucao_teste_id.in_(execs_ids)))
+            # Apaga a execução em si
+            await self.db.execute(delete(ExecucaoTeste).where(ExecucaoTeste.id.in_(execs_ids)))
+
+        # 2. Apaga os passos do template do caso
+        await self.db.execute(delete(PassoCasoTeste).where(PassoCasoTeste.caso_teste_id == caso_id))
+
+        # 3. Finalmente apaga o Caso de Teste
         query = delete(CasoTeste).where(CasoTeste.id == caso_id)
         result = await self.db.execute(query)
         await self.db.commit()
         return result.rowcount > 0
 
     # --- CICLOS DE TESTE ---
+
+    async def get_ciclo_by_nome_projeto(self, nome: str, projeto_id: int) -> Optional[CicloTeste]:
+        query = select(CicloTeste).where(
+            CicloTeste.nome == nome, 
+            CicloTeste.projeto_id == projeto_id
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
     async def create_ciclo(self, projeto_id: int, ciclo_data: CicloTesteCreate) -> CicloTeste:
         dados_ciclo = ciclo_data.model_dump(exclude={'projeto_id'})
         db_ciclo = CicloTeste(projeto_id=projeto_id, **dados_ciclo)
         self.db.add(db_ciclo)
         await self.db.commit()
-        await self.db.refresh(db_ciclo)
-        return db_ciclo
+        
+        query = (
+            select(CicloTeste)
+            .options(
+                selectinload(CicloTeste.execucoes).selectinload(ExecucaoTeste.responsavel)
+            )
+            .where(CicloTeste.id == db_ciclo.id)
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first()
 
     async def list_ciclos_by_projeto(self, projeto_id: int, skip: int = 0, limit: int = 50) -> Sequence[CicloTeste]:
         query = (
             select(CicloTeste)
+            .options(
+                selectinload(CicloTeste.execucoes).selectinload(ExecucaoTeste.responsavel)
+            )
             .where(CicloTeste.projeto_id == projeto_id)
             .offset(skip)
             .limit(limit)
             .order_by(CicloTeste.data_inicio.desc())
         )
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return result.unique().scalars().all()
 
     async def update_ciclo(self, ciclo_id: int, dados: dict) -> Optional[CicloTeste]:
         query = (
             sqlalchemy_update(CicloTeste)
             .where(CicloTeste.id == ciclo_id)
             .values(**dados)
-            .returning(CicloTeste)
         )
-        result = await self.db.execute(query)
+        await self.db.execute(query)
         await self.db.commit()
+        
+        query_get = (
+            select(CicloTeste)
+            .options(selectinload(CicloTeste.execucoes).selectinload(ExecucaoTeste.responsavel))
+            .where(CicloTeste.id == ciclo_id)
+        )
+        result = await self.db.execute(query_get)
         return result.scalars().first()
 
     async def delete_ciclo(self, ciclo_id: int) -> bool:
+        # Cascade manual se necessário, mas geralmente ciclos apagam tudo
         query = delete(CicloTeste).where(CicloTeste.id == ciclo_id)
         result = await self.db.execute(query)
         await self.db.commit()
@@ -137,6 +225,17 @@ class TesteRepository:
 
     # --- EXECUÇÃO ---
     
+    async def verificar_pendencias_ciclo(self, ciclo_id: int) -> bool:
+        query = select(ExecucaoTeste).where(
+            ExecucaoTeste.ciclo_teste_id == ciclo_id,
+            ExecucaoTeste.status_geral.in_([
+                StatusExecucaoEnum.pendente, 
+                StatusExecucaoEnum.em_progresso
+            ])
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first() is not None
+
     async def criar_planejamento_execucao(self, ciclo_id: int, caso_id: int, responsavel_id: int) -> ExecucaoTeste:
         nova_execucao = ExecucaoTeste(
             ciclo_teste_id=ciclo_id,
@@ -195,12 +294,8 @@ class TesteRepository:
             .where(ExecucaoTeste.responsavel_id == usuario_id)
         )
 
-        # --- CORREÇÃO: Removemos o filtro padrão que escondia concluídos ---
         if status:
             query = query.where(ExecucaoTeste.status_geral == status)
-        # else:
-            # ANTES: filtrava pendente/em_progresso
-            # AGORA: traz tudo, para ficar no histórico
 
         query = query.offset(skip).limit(limit).order_by(ExecucaoTeste.updated_at.desc())
             
