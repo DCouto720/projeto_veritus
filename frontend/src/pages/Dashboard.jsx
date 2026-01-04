@@ -1,28 +1,38 @@
+import { useSnackbar } from '../context/SnackbarContext';
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import { api } from '../services/api';
+import { useRef} from 'react';
 
 export function Dashboard() {
+  const { success, error } = useSnackbar();
+  const didRun = useRef(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (didRun.current) return;
+    didRun.current = true;
+    
+    success("Dashboard carregado com sucesso!");
+  }, [success]);
 
   useEffect(() => {
     async function loadDashboard() {
       try {
         const response = await api.get('/dashboard/');
         setData(response);
-      } catch (error) {
-        console.error(error);
-        toast.error("Erro ao carregar dashboard.");
+      } catch (err) {
+        console.error(err);
+        error("Erro ao carregar dashboard.");
       } finally {
         setLoading(false);
       }
     }
     loadDashboard();
-  }, []);
+  }, [error]);
 
   if (loading) return <div className="container">Carregando...</div>;
   if (!data) return <div className="container">Sem dados.</div>;

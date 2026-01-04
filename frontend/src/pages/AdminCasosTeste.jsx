@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { useSnackbar } from '../context/SnackbarContext';
 import { api } from '../services/api';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 
 export function AdminCasosTeste() {
+  const snackbar = useSnackbar();
   const [projetos, setProjetos] = useState([]);
   const [ciclos, setCiclos] = useState([]);
   const [usuarios, setUsuarios] = useState([]); 
@@ -65,7 +66,7 @@ export function AdminCasosTeste() {
           setSelectedProjeto(ativos[0].id);
         }
       } catch (e) {
-        toast.error("Erro ao carregar dados básicos.");
+        snackbar.error("Erro ao carregar dados básicos.");
       }
     };
     loadBasics();
@@ -96,7 +97,7 @@ export function AdminCasosTeste() {
       setCasos(Array.isArray(casosData) ? casosData : []);
       setCiclos(Array.isArray(ciclosData) ? ciclosData : []);
     } catch (error) {
-      toast.error("Erro ao carregar dados.");
+      snackbar.error("Erro ao carregar dados.");
     } finally {
       setLoading(false);
     }
@@ -174,15 +175,15 @@ export function AdminCasosTeste() {
     try {
       if (editingId) {
         await api.put(`/testes/casos/${editingId}`, payload);
-        toast.success("Cenário atualizado!");
+        snackbar.success("Cenário atualizado!");
       } else {
         await api.post(`/testes/projetos/${selectedProjeto}/casos`, payload);
-        toast.success("Cenário salvo!");
+        snackbar.success("Cenário salvo!");
       }
       handleReset();
       loadDadosProjeto(selectedProjeto);
     } catch (error) {
-      toast.error(error.message || "Erro ao salvar.");
+      snackbar.error(error.message || "Erro ao salvar.");
     }
   };
 
@@ -190,10 +191,10 @@ export function AdminCasosTeste() {
       if (!casoToDelete) return;
       try {
         await api.delete(`/testes/casos/${casoToDelete.id}`);
-        toast.success("Cenário excluído.");
+        snackbar.success("Cenário excluído.");
         loadDadosProjeto(selectedProjeto);
       } catch (e) { 
-          toast.error("Erro ao excluir."); 
+          snackbar.error("Erro ao excluir."); 
       } finally {
          setIsDeleteModalOpen(false);
          setCasoToDelete(null);

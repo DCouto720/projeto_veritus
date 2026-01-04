@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, Link } from 'react-router-dom';
-import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './pages/Login';
 import './styles/index.css';
+import { SnackbarProvider } from './context/SnackbarContext';
+import { Snackbar } from './components/Snackbar';
+
 
 import ScrollToTop from './components/ScrollToTop'; 
 
@@ -115,7 +117,7 @@ function ProtectedLayout({ roles }) {
 function App() {
   return (
     <AuthProvider>
-      <Toaster richColors position="top-right" />
+      <SnackbarProvider>
       <BrowserRouter>
         <ScrollToTop />
         
@@ -143,6 +145,8 @@ function App() {
            <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      <Snackbar />
+      </SnackbarProvider>
     </AuthProvider>
   );
 }

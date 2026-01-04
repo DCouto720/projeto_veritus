@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { useSnackbar } from '../context/SnackbarContext';
 import { api } from '../services/api';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 
 export function AdminUsers() {
+  const snackbar = useSnackbar();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -65,7 +66,7 @@ export function AdminUsers() {
       setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao carregar lista.");
+      snackbar.error("Erro ao carregar lista.");
     } finally {
       setLoading(false);
     }
@@ -90,12 +91,12 @@ export function AdminUsers() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!form.nome.trim()) return toast.warning("Nome obrigatório.");
-    if (!form.username.trim()) return toast.warning("Username obrigatório.");
-    if (!form.email.trim()) return toast.warning("Email obrigatório.");
+    if (!form.nome.trim()) return snackbar.warning("Nome obrigatório.");
+    if (!form.username.trim()) return snackbar.warning("Username obrigatório.");
+    if (!form.email.trim()) return snackbar.warning("Email obrigatório.");
     
     if (!selectedUser && !form.senha) {
-        return toast.warning("Senha obrigatória.");
+        return snackbar.warning("Senha obrigatória.");
     }
 
     try {
@@ -109,7 +110,7 @@ export function AdminUsers() {
         if (form.senha) payload.senha = form.senha;
 
         await api.put(`/usuarios/${selectedUser.id}`, payload);
-        toast.success("Usuário atualizado.");
+        snackbar.success("Usuário atualizado.");
       } else {
         const payload = {
           nome: form.nome,
@@ -120,13 +121,13 @@ export function AdminUsers() {
           ativo: true
         };
         await api.post("/usuarios/", payload);
-        toast.success("Usuário criado.");
+        snackbar.success("Usuário criado.");
       }
       
       handleClear();
       loadUsers(); 
     } catch (error) {
-      toast.error(error.message || "Erro ao salvar.");
+      snackbar.error(error.message || "Erro ao salvar.");
     }
   };
 
@@ -134,20 +135,20 @@ export function AdminUsers() {
       try {
           const novoStatus = !user.ativo;
           await api.put(`/usuarios/${user.id}`, { ativo: novoStatus });
-          toast.success(`Status alterado.`);
+          snackbar.success(`Status alterado.`);
           setUsers(prev => prev.map(u => u.id === user.id ? { ...u, ativo: novoStatus } : u));
           if (selectedUser?.id === user.id) {
               setSelectedUser(prev => ({ ...prev, ativo: novoStatus }));
           }
       } catch (error) { 
-        toast.error("Erro ao alterar status."); 
+        snackbar.error("Erro ao alterar status."); 
       }
   };
 
   const requestDelete = () => {
       if (!selectedUser) return;
       if (selectedUser.nivel_acesso?.nome === 'admin') {
-          return toast.error("Não pode excluir admin.");
+          return snackbar.error("Não pode excluir admin.");
       }
       setUserToDelete(selectedUser);
       setIsDeleteModalOpen(true);
@@ -157,11 +158,11 @@ export function AdminUsers() {
       if (!userToDelete) return;
       try {
         await api.delete(`/usuarios/${userToDelete.id}`);
-        toast.success("Excluído.");
+        snackbar.success("Excluído.");
         handleClear();
         loadUsers();
       } catch (error) { 
-          toast.error("Erro ao excluir."); 
+          snackbar.error("Erro ao excluir."); 
       } finally {
           setUserToDelete(null);
       }

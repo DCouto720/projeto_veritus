@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { api, getSession } from '../services/api';
-import { toast } from 'sonner';
+import { useSnackbar } from '../context/SnackbarContext';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 
 export function QADefeitos() {
+  const snackbar = useSnackbar();
   const isAdmin = getSession().role === 'admin';
   const [defeitos, setDefeitos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [galleryImages, setGalleryImages] = useState(null);
-
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [defectToDelete, setDefectToDelete] = useState(null);
 
@@ -33,7 +33,7 @@ export function QADefeitos() {
       setDefeitos(Array.isArray(data) ? data : []);
     } catch (error) { 
         console.error(error); 
-        toast.error("Erro ao carregar defeitos.");
+        snackbar.error("Erro ao carregar defeitos.");
     }
     finally { setLoading(false); }
   };
@@ -42,10 +42,10 @@ export function QADefeitos() {
     setOpenMenuId(null); 
     try {
         await api.put(`/defeitos/${id}`, { status: newStatus });        
-        toast.success(`Status atualizado para ${newStatus.toUpperCase()}`);
+        snackbar.success(`Status atualizado para ${newStatus.toUpperCase()}`);
         loadDefeitos(); 
     } catch (e) { 
-        toast.error("Erro ao atualizar status."); 
+        snackbar.error("Erro ao atualizar status."); 
     }
   };
   
@@ -58,10 +58,10 @@ export function QADefeitos() {
       if (!defectToDelete) return;
       try {
           await api.delete(`/defeitos/${defectToDelete.id}`);
-          toast.success(`Defeito excluído.`);
+          snackbar.success(`Defeito excluído.`);
           loadDefeitos();
       } catch (error) {
-          toast.error("Erro ao excluir.");
+          snackbar.error("Erro ao excluir.");
       } finally {
           setDefectToDelete(null); 
       }

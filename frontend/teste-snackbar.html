@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Snackbar CSS</title>
+    <!-- IMPORTE O SEU CSS AQUI -->
+    <link rel="stylesheet" href="src/styles/snackbar.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        .instruction {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #2196f3;
+        }
+        .success { background: #4caf50; }
+        .error { background: #f44336; }
+        .warning { background: #ff9800; }
+        .info { background: #2196f3; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🔍 Teste de Posicionamento da Snackbar</h1>
+        
+        <div class="instruction">
+            <strong>INSTRUÇÃO:</strong> O quadrado COLORIDO deve aparecer no <strong>CANTO SUPERIOR DIREITO</strong> da tela, 
+            NÃO no centro. Se estiver no centro, o CSS está errado.
+        </div>
+        
+        <!-- AQUI VEM A SNACKBAR DE TESTE (SIMULA O PORTAL) -->
+        <div id="snackbar-root">
+            <div class="snackbar-container">
+                <div class="snackbar snackbar-success">
+                    ✅ Esta é uma snackbar de SUCESSO!
+                </div>
+                <div class="snackbar snackbar-error">
+                    ❌ Esta é uma snackbar de ERRO!
+                </div>
+                <div class="snackbar snackbar-warning">
+                    ⚠️ Esta é uma snackbar de ALERTA!
+                </div>
+                <div class="snackbar snackbar-info">
+                    ℹ️ Esta é uma snackbar de INFORMAÇÃO!
+                </div>
+            </div>
+        </div>
+        
+        <h2>O que verificar:</h2>
+        <ul>
+            <li>✅ Os quadrados coloridos devem estar no CANTO SUPERIOR DIREITO</li>
+            <li>✅ Devem ter cantos arredondados</li>
+            <li>✅ Devem estar empilhados verticalmente (um embaixo do outro)</li>
+            <li>❌ NÃO devem estar centralizados na tela</li>
+            <li>❌ NÃO devem ocupar toda a largura</li>
+        </ul>
+        
+        <h2>Se estiver CENTRALIZADO, o problema é:</h2>
+        <p>No arquivo <code>snackbar.css</code>, remover:</p>
+        <pre>
+.snackbar-container {
+  justify-content: center;  ← REMOVER
+  align-items: center;      ← REMOVER
+  width: 100%;              ← REMOVER  
+  height: 100%;             ← REMOVER
+}
+        </pre>
+    </div>
+</body>
+</html>

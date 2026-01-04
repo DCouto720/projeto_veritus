@@ -1,9 +1,10 @@
+import { useSnackbar } from '../context/SnackbarContext';
 import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
 import { api } from '../services/api';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 
 export function AdminProjetos() {
+  const snackbar = useSnackbar();
   const [projetos, setProjetos] = useState([]);
   const [modulos, setModulos] = useState([]);
   const [usuarios, setUsuarios] = useState([]); 
@@ -77,14 +78,14 @@ export function AdminProjetos() {
         
     } catch (e) { 
         console.error(e); 
-        toast.error("Erro ao carregar dados.");
+        snackbar.error("Erro ao carregar dados.");
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!form.modulo_id) return toast.warning("Selecione um Módulo.");
+    if (!form.modulo_id) return snackbar.warning("Selecione um Módulo.");
 
     // Valida duplicidade
     const nomeNormalizado = form.nome.trim().toLowerCase();
@@ -92,12 +93,12 @@ export function AdminProjetos() {
         p.nome.trim().toLowerCase() === nomeNormalizado && 
         p.id !== editingId
     );
-    if (duplicado) return toast.warning("Já existe um projeto com este nome.");
+    if (duplicado) return snackbar.warning("Já existe um projeto com este nome.");
 
     if (editingId) {
         const projetoReal = projetos.find(p => p.id === editingId);
         if (projetoReal && projetoReal.status === 'finalizado') {
-            return toast.info("Reative o projeto para editar.");
+            return snackbar.info("Reative o projeto para editar.");
         }
     }
 
@@ -111,16 +112,16 @@ export function AdminProjetos() {
     try {
         if (editingId) {
             await api.put(`/projetos/${editingId}`, payload);
-            toast.success("Projeto atualizado!");
+            snackbar.success("Projeto atualizado!");
         } else {
             await api.post("/projetos/", payload);
-            toast.success("Projeto criado!");
+            snackbar.success("Projeto criado!");
         }
         
         handleCancel();
         loadAll(); 
     } catch (err) { 
-        toast.error(err.message || "Erro ao salvar."); 
+        snackbar.error(err.message || "Erro ao salvar."); 
     }
   };
 
@@ -131,7 +132,7 @@ export function AdminProjetos() {
 
   const handleSelectRow = (projeto) => {
       if (projeto.status === 'finalizado') {
-          return toast.info("Reative o projeto clicando no status para editá-lo.");
+          return snackbar.info("Reative o projeto clicando no status para editá-lo.");
       }
       setForm({
           nome: projeto.nome,
@@ -149,7 +150,7 @@ export function AdminProjetos() {
       
       try {
           await api.put(`/projetos/${projeto.id}`, { ...projeto, status: novoStatus });
-          toast.success(`Status: ${novoStatus.toUpperCase()}`);
+          snackbar.success(`Status: ${novoStatus.toUpperCase()}`);
           
           setProjetos(prev => prev.map(p => 
               p.id === projeto.id ? { ...p, status: novoStatus } : p
@@ -157,7 +158,7 @@ export function AdminProjetos() {
           if (editingId === projeto.id) setForm(prev => ({ ...prev, status: novoStatus }));
 
       } catch(e) { 
-          toast.error("Erro ao mudar status."); 
+          snackbar.error("Erro ao mudar status."); 
       }
   };
 
@@ -170,11 +171,11 @@ export function AdminProjetos() {
       if (!projectToDelete) return;
       try {
           await api.delete(`/projetos/${projectToDelete.id}`);
-          toast.success("Projeto excluído.");
+          snackbar.success("Projeto excluído.");
           loadAll();
           if (editingId === projectToDelete.id) handleCancel();
       } catch (error) {
-          toast.error(error.message || "Não foi possível excluir.");
+          snackbar.error(error.message || "Não foi possível excluir.");
       } finally {
           setProjectToDelete(null);
       }

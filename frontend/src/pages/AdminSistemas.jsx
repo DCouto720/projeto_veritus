@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { useSnackbar } from '../context/SnackbarContext';
 import { api } from '../services/api';
 import { ConfirmationModal } from '../components/ConfirmationModal'; 
 
 export function AdminSistemas() {
+  const snackbar = useSnackbar();
   const [sistemas, setSistemas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ nome: '', descricao: '' });
@@ -52,7 +53,7 @@ export function AdminSistemas() {
       setSistemas(Array.isArray(data) ? data : []);
     } catch (error) { 
       console.error(error); 
-      toast.error("Erro ao carregar sistemas."); 
+      snackbar.error("Erro ao carregar sistemas."); 
     } finally { 
       setLoading(false); 
     }
@@ -69,21 +70,21 @@ export function AdminSistemas() {
     );
 
     if (duplicado) {
-        return toast.warning("Já existe um Sistema com este nome.");
+        return snackbar.warning("Já existe um Sistema com este nome.");
     }
 
     try {
       if (editingId) {
         await api.put(`/sistemas/${editingId}`, form);
-        toast.success("Sistema atualizado!");
+        snackbar.success("Sistema atualizado!");
       } else {
         await api.post("/sistemas/", { ...form, ativo: true });
-        toast.success("Sistema criado!");
+        snackbar.success("Sistema criado!");
       }
       handleCancel();
       loadSistemas(); 
     } catch (error) { 
-      toast.error(error.message || "Erro ao salvar."); 
+      snackbar.error(error.message || "Erro ao salvar."); 
     }
   };
 
@@ -101,10 +102,10 @@ export function AdminSistemas() {
       try {
           const novoStatus = !sistema.ativo;
           await api.put(`/sistemas/${sistema.id}`, { ativo: novoStatus });
-          toast.success(`Sistema ${novoStatus ? 'ativado' : 'desativado'}.`);
+          snackbar.success(`Sistema ${novoStatus ? 'ativado' : 'desativado'}.`);
           setSistemas(prev => prev.map(s => s.id === sistema.id ? {...s, ativo: novoStatus} : s));
       } catch(e) { 
-          toast.error("Erro ao alterar status."); 
+          snackbar.error("Erro ao alterar status."); 
       }
   };
 
@@ -117,11 +118,11 @@ export function AdminSistemas() {
       if (!sistemaToDelete) return;
       try {
           await api.delete(`/sistemas/${sistemaToDelete.id}`);
-          toast.success(`Sistema excluído.`);
+          snackbar.success(`Sistema excluído.`);
           loadSistemas();
           if (editingId === sistemaToDelete.id) handleCancel();
       } catch (error) {
-          toast.error(error.message || "Erro ao excluir (verifique vínculos).");
+          snackbar.error(error.message || "Erro ao excluir (verifique vínculos).");
       } finally {
           setSistemaToDelete(null); 
       }

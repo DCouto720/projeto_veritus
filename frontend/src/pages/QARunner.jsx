@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
+import { useSnackbar } from '../context/SnackbarContext';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { DefectModal } from '../components/DefectModal';
 
 export function QARunner() {
+  const snackbar = useSnackbar();
   const { user } = useAuth();
   
   // Variaveis de estado para guardar os dados
@@ -38,7 +39,7 @@ export function QARunner() {
         setTarefas(Array.isArray(data) ? data : []);
     } catch (e) { 
         console.error(e);
-        toast.error("Não foi possível carregar suas tarefas.");
+        snackbar.error("Não foi possível carregar suas tarefas.");
     } finally { 
         setLoading(false); 
     }
@@ -59,10 +60,10 @@ export function QARunner() {
               setTarefas(prev => prev.map(task => 
                 task.id === t.id ? {...task, status_geral: 'em_progresso'} : task
               ));
-              toast.info(`Iniciando execução: ${t.caso_teste?.nome}`);
+              snackbar.info(`Iniciando execução: ${t.caso_teste?.nome}`);
           }
       } catch (e) { 
-          toast.error("Erro ao carregar detalhes da execução.");
+          snackbar.error("Erro ao carregar detalhes da execução.");
       }
   };
 
@@ -70,7 +71,7 @@ export function QARunner() {
   const handleStepAction = (passoId, acao) => {
       if (acao === 'aprovado') {
           updatePasso(passoId, 'aprovado');
-          toast.success("Passo aprovado.");
+          snackbar.success("Passo aprovado.");
       } else {
           setCurrentFailedStep(passoId);
           setIsDefectModalOpen(true);
@@ -88,7 +89,7 @@ export function QARunner() {
           });
           setActiveExecucao(prev => ({ ...prev, passos_executados: updatedPassos }));
       } catch (error) {
-          toast.error("Erro ao atualizar passo.");
+          snackbar.error("Erro ao atualizar passo.");
       }
   };
 
@@ -111,10 +112,10 @@ export function QARunner() {
       try {
           await api.put(`/testes/execucoes/${activeExecucao.id}/finalizar?status=${statusFinal}`);
           setActiveExecucao(prev => ({ ...prev, status_geral: statusFinal }));
-          toast.success(`Teste finalizado: ${statusFinal.toUpperCase()}`);
+          snackbar.success(`Teste finalizado: ${statusFinal.toUpperCase()}`);
           loadMinhasTarefas(); 
       } catch (error) {
-          toast.error("Erro ao finalizar execução.");
+          snackbar.error("Erro ao finalizar execução.");
       }
   };
 
@@ -186,9 +187,9 @@ export function QARunner() {
           setActiveExecucao(prev => ({ ...prev, passos_executados: updatedPassos }));
           
           if (galleryImages) setGalleryImages(null);
-          toast.success("Evidência removida.");
+          snackbar.success("Evidência removida.");
       } catch (error) { 
-          toast.error("Erro ao remover evidência."); 
+          snackbar.error("Erro ao remover evidência."); 
       }
   };
 
@@ -210,11 +211,11 @@ export function QARunner() {
           });
 
           await updatePasso(currentFailedStep, 'reprovado');
-          toast.success("Defeito registrado e passo reprovado.");
+          snackbar.success("Defeito registrado e passo reprovado.");
           setIsDefectModalOpen(false);
       } catch (error) { 
           console.error(error);
-          toast.error("Erro ao registrar defeito."); 
+          snackbar.error("Erro ao registrar defeito."); 
       }
   };
 

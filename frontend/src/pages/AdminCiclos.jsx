@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { useSnackbar } from '../context/SnackbarContext';
 import { api } from '../services/api';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 
 export function AdminCiclos() {
+  const snackbar = useSnackbar();
   const [projetos, setProjetos] = useState([]);
   const [selectedProjeto, setSelectedProjeto] = useState('');
   const [ciclos, setCiclos] = useState([]);
@@ -74,7 +75,7 @@ export function AdminCiclos() {
             if (ativos.length > 0) setSelectedProjeto(ativos[0].id);
         } catch (e) {
             console.error(e);
-            toast.error("Erro ao carregar projetos.");
+            snackbar.error("Erro ao carregar projetos.");
         }
     };
     fetchProjetos();
@@ -101,7 +102,7 @@ export function AdminCiclos() {
       const data = await api.get(`/testes/projetos/${projId}/ciclos`);
       setCiclos(Array.isArray(data) ? data : []);
     } catch (error) { 
-        toast.error("Erro ao carregar ciclos.");
+        snackbar.error("Erro ao carregar ciclos.");
     } finally { 
         setLoading(false); 
     }
@@ -111,7 +112,7 @@ export function AdminCiclos() {
   const isProjectActive = currentProject?.status === 'ativo';
 
   const handleNew = () => {
-      if (!isProjectActive) return toast.warning(`Projeto ${currentProject?.status?.toUpperCase()}. Criação bloqueada.`);
+      if (!isProjectActive) return snackbar.warning(`Projeto ${currentProject?.status?.toUpperCase()}. Criação bloqueada.`);
       setView('form'); 
       setEditingId(null);
       setForm({ nome: '', descricao: '', data_inicio: '', data_fim: '', status: 'planejado' });
@@ -131,10 +132,10 @@ export function AdminCiclos() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedProjeto) return toast.warning("Selecione um projeto!");
-    if (!form.nome.trim()) return toast.warning("Nome obrigatório.");
-    if (!form.data_inicio || !form.data_fim) return toast.warning("Datas obrigatórias.");
-    if (form.data_inicio > form.data_fim) return toast.warning("Início não pode ser maior que fim.");
+    if (!selectedProjeto) return snackbar.warning("Selecione um projeto!");
+    if (!form.nome.trim()) return snackbar.warning("Nome obrigatório.");
+    if (!form.data_inicio || !form.data_fim) return snackbar.warning("Datas obrigatórias.");
+    if (form.data_inicio > form.data_fim) return snackbar.warning("Início não pode ser maior que fim.");
 
     try {
       const payload = { 
@@ -145,15 +146,15 @@ export function AdminCiclos() {
       
       if (editingId) { 
           await api.put(`/testes/ciclos/${editingId}`, payload); 
-          toast.success("Ciclo atualizado!"); 
+          snackbar.success("Ciclo atualizado!"); 
       } else { 
           await api.post(`/testes/projetos/${selectedProjeto}/ciclos`, payload); 
-          toast.success("Ciclo criado!"); 
+          snackbar.success("Ciclo criado!"); 
       }
       setView('list'); setEditingId(null);
       loadCiclos(selectedProjeto);
     } catch (error) { 
-        toast.error(error.message || "Erro ao salvar."); 
+        snackbar.error(error.message || "Erro ao salvar."); 
     }
   };
 
@@ -161,10 +162,10 @@ export function AdminCiclos() {
       if (!cicloToDelete) return;
       try { 
           await api.delete(`/testes/ciclos/${cicloToDelete.id}`); 
-          toast.success("Ciclo excluído."); 
+          snackbar.success("Ciclo excluído."); 
           loadCiclos(selectedProjeto); 
       } catch (e) { 
-          toast.error("Erro ao excluir."); 
+          snackbar.error("Erro ao excluir."); 
       } finally {
           setIsDeleteModalOpen(false);
           setCicloToDelete(null);

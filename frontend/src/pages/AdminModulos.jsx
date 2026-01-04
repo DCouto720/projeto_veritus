@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { useSnackbar } from '../context/SnackbarContext';
 import { api } from '../services/api';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 
 export function AdminModulos() {
+  const snackbar = useSnackbar();
   const [modulos, setModulos] = useState([]);
   const [sistemas, setSistemas] = useState([]);
   const [form, setForm] = useState({ nome: '', descricao: '', sistema_id: '' });
@@ -55,13 +56,13 @@ export function AdminModulos() {
         }
     } catch (e) { 
         console.error(e); 
-        toast.error("Erro ao carregar dados.");
+        snackbar.error("Erro ao carregar dados.");
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.sistema_id) return toast.warning("Selecione um Sistema Pai.");
+    if (!form.sistema_id) return snackbar.warning("Selecione um Sistema Pai.");
 
     const nomeNormalizado = form.nome.trim().toLowerCase();
     const sistemaIdSelecionado = parseInt(form.sistema_id);
@@ -74,22 +75,22 @@ export function AdminModulos() {
         return mesmoSistema && mesmoNome && naoEhOProprio;
     });
 
-    if (duplicado) return toast.warning("Já existe um módulo com este nome.");
+    if (duplicado) return snackbar.warning("Já existe um módulo com este nome.");
 
     try {
       const payload = { ...form, sistema_id: sistemaIdSelecionado };
       if (editingId) {
           await api.put(`/modulos/${editingId}`, payload);
-          toast.success("Módulo atualizado!");
+          snackbar.success("Módulo atualizado!");
       } else {
           await api.post("/modulos/", { ...payload, ativo: true });
-          toast.success("Módulo criado!");
+          snackbar.success("Módulo criado!");
       }
       handleCancel();
       const updatedMods = await api.get("/modulos/");
       setModulos(updatedMods);
     } catch (error) { 
-        toast.error(error.message || "Erro ao salvar módulo."); 
+        snackbar.error(error.message || "Erro ao salvar módulo."); 
     }
   };
 
@@ -107,9 +108,9 @@ export function AdminModulos() {
       try {
           const novoStatus = !modulo.ativo;
           await api.put(`/modulos/${modulo.id}`, { ativo: novoStatus });
-          toast.success(`Módulo ${novoStatus ? 'ativado' : 'desativado'}.`);
+          snackbar.success(`Módulo ${novoStatus ? 'ativado' : 'desativado'}.`);
           setModulos(prev => prev.map(m => m.id === modulo.id ? { ...m, ativo: novoStatus } : m));
-      } catch(e) { toast.error("Erro ao alterar status."); }
+      } catch(e) { snackbar.error("Erro ao alterar status."); }
   };
 
   const requestDelete = (modulo) => {
@@ -121,10 +122,10 @@ export function AdminModulos() {
       if (!moduloToDelete) return;
       try {
           await api.delete(`/modulos/${moduloToDelete.id}`);
-          toast.success("Excluído.");
+          snackbar.success("Excluído.");
           setModulos(prev => prev.filter(m => m.id !== moduloToDelete.id));
           if (editingId === moduloToDelete.id) handleCancel();
-      } catch (error) { toast.error(error.message || "Não foi possível excluir."); } 
+      } catch (error) { snackbar.error(error.message || "Não foi possível excluir."); } 
       finally { setModuloToDelete(null); }
   };
 

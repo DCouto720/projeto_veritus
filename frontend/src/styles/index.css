@@ -396,3 +396,27 @@ tr.selected { background-color: #EFF6FF; }
     background-color: #fff;
   }
 }
+
+/* Animação da Snackbar */
+@keyframes snackbarSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Opcional: fade out quando desaparecer */
+@keyframes snackbarSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
