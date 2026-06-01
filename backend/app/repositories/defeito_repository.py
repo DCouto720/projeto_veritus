@@ -1,34 +1,50 @@
+from typing import Sequence, Optional, List
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
-from typing import Sequence, Optional
+from sqlalchemy.orm import selectinload, aliased
+from sqlalchemy import desc
 
 from app.models.testing import Defeito, ExecucaoTeste, CasoTeste, ExecucaoPasso
+from app.models.projeto import Projeto
 from app.models.usuario import Usuario
-from app.schemas.defeito import DefeitoCreate
+from app.schemas.defeito import DefeitoCreate, DefeitoUpdate
 
 class DefeitoRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    # Helper para não repetir as opções de carregamento gigantes
     def _get_load_options(self):
         return [
-            # Carrega: Defeito -> Execução -> Caso de Teste -> Passos
-            selectinload(Defeito.execucao).selectinload(ExecucaoTeste.caso_teste).selectinload(CasoTeste.passos),
-            
-            # Carrega: Defeito -> Execução -> Responsável -> Nivel
+            selectinload(Defeito.execucao).selectinload(ExecucaoTeste.caso_teste).options(
+                selectinload(CasoTeste.passos),
+                selectinload(CasoTeste.projeto),
+                selectinload(CasoTeste.ciclo)
+            ),
+            selectinload(Defeito.execucao).selectinload(ExecucaoTeste.ciclo),
             selectinload(Defeito.execucao).selectinload(ExecucaoTeste.responsavel).selectinload(Usuario.nivel_acesso),
-            
-            # Carrega: Defeito -> Execução -> Passos Executados -> Template
             selectinload(Defeito.execucao).selectinload(ExecucaoTeste.passos_executados).selectinload(ExecucaoPasso.passo_template)
         ]
+    # Logs auxiliar para o endpoint
+    async def get_nome_teste_por_execucao(self, execucao_id: int) -> Optional[str]:
+        query = (
+            select(CasoTeste.nome)
+            .select_from(ExecucaoTeste)
+            .join(CasoTeste, ExecucaoTeste.caso_teste_id == CasoTeste.id)
+            .where(ExecucaoTeste.id == execucao_id)
+        )
+        result = await self.db.execute(query)
+        return result.scalar()
 
     async def create(self, dados: DefeitoCreate) -> Defeito:
-        # 1. BLINDAGEM: Verifica duplicidade com carregamento COMPLETO
+        dados_dict = dados.model_dump()
+        if dados_dict.get('evidencias'):
+            dados_dict['evidencias'] = json.dumps(dados_dict['evidencias'])
+        else:
+            dados_dict['evidencias'] = json.dumps([])
         query_existente = (
             select(Defeito)
-            .options(*self._get_load_options()) # <--- Usa o helper aqui
+            .options(*self._get_load_options()) 
             .where(
                 Defeito.execucao_teste_id == dados.execucao_teste_id,
                 Defeito.titulo == dados.titulo,
@@ -41,53 +57,88 @@ class DefeitoRepository:
 
         if defeito_existente:
             return defeito_existente
-
-        # 2. Cria o novo
-        novo_defeito = Defeito(**dados.model_dump())
+        novo_defeito = Defeito(**dados_dict)
         self.db.add(novo_defeito)
         await self.db.commit()
-        
-        # 3. Busca o novo com TODOS os relacionamentos profundos
         query_novo = (
             select(Defeito)
-            .options(*self._get_load_options()) # <--- Usa o helper aqui também
+            .options(*self._get_load_options()) 
             .where(Defeito.id == novo_defeito.id)
         )
         result = await self.db.execute(query_novo)
         return result.scalars().first()
 
-    async def get_by_execucao(self, execucao_id: int) -> Sequence[Defeito]:
-        query = select(Defeito).where(Defeito.execucao_teste_id == execucao_id)
-        result = await self.db.execute(query)
-        return result.scalars().all()
-
-    async def update(self, id: int, dados: dict) -> Optional[Defeito]:
-        defeito = await self.db.get(Defeito, id)
+    async def update(self, id: int, dados: DefeitoUpdate) -> Optional[Defeito]:
+        defeito = await self.get_by_id(id)
         if not defeito:
             return None
-        for key, value in dados.items():
+            
+        update_data = dados.model_dump(exclude_unset=True)
+        if 'evidencias' in update_data and isinstance(update_data['evidencias'], list):
+             update_data['evidencias'] = json.dumps(update_data['evidencias'])
+
+        for key, value in update_data.items():
             setattr(defeito, key, value)
+            
         await self.db.commit()
-        
-        # Recarrega completo para o retorno
+        return await self.get_by_id(id)
+
+    async def delete(self, id: int) -> bool:
+        defeito = await self.db.get(Defeito, id)
+        if defeito:
+            await self.db.delete(defeito)
+            await self.db.commit()
+            return True
+        return False
+
+    async def get_by_id(self, id: int) -> Optional[Defeito]:
         query = (
             select(Defeito)
-            .options(*self._get_load_options()) # <--- Usa o helper aqui também
+            .options(*self._get_load_options())
             .where(Defeito.id == id)
         )
         result = await self.db.execute(query)
         return result.scalars().first()
 
-    async def get_all(self, responsavel_id: Optional[int] = None) -> Sequence[Defeito]:
+    async def get_by_execucao(self, execucao_id: int) -> Sequence[Defeito]:
         query = (
             select(Defeito)
-            .join(Defeito.execucao)
-            .options(*self._get_load_options()) # <--- Usa o helper aqui
-            .order_by(Defeito.id.desc())
+            .options(*self._get_load_options())
+            .where(Defeito.execucao_teste_id == execucao_id)
+        )
+        result = await self.db.execute(query)
+        return result.scalars().all()
+
+    async def get_all_with_details(self, responsavel_id: Optional[int] = None):
+        Runner = aliased(Usuario)  
+        Manager = aliased(Usuario) 
+
+        query = (
+            select(
+                Defeito.id,
+                Defeito.titulo,
+                Defeito.descricao,
+                Defeito.status,
+                Defeito.severidade,
+                Defeito.created_at,
+                Defeito.evidencias,
+                Defeito.logs_erro,
+                Defeito.execucao_teste_id,
+                CasoTeste.nome.label('caso_teste_nome'),
+                Projeto.nome.label('projeto_nome'),
+                Runner.nome.label('responsavel_teste_nome'),   
+                Manager.nome.label('responsavel_projeto_nome') 
+            )
+            .join(ExecucaoTeste, Defeito.execucao_teste_id == ExecucaoTeste.id)
+            .join(CasoTeste, ExecucaoTeste.caso_teste_id == CasoTeste.id)
+            .join(Projeto, CasoTeste.projeto_id == Projeto.id)
+            .outerjoin(Runner, ExecucaoTeste.responsavel_id == Runner.id)
+            .outerjoin(Manager, Projeto.responsavel_id == Manager.id)
+            .order_by(desc(Defeito.id))
         )
 
         if responsavel_id:
             query = query.where(ExecucaoTeste.responsavel_id == responsavel_id)
 
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return result.mappings().all()

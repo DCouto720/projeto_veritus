@@ -1,0 +1,560 @@
+/* Layout Principal Grid */
+.container {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
+  height: calc(100vh - 140px); 
+  overflow: hidden;
+}
+
+/* SIDEBAR */
+.sidebar {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  display: flex;          
+  flex-direction: column; 
+  height: 100%;     
+  overflow: hidden;     
+  padding: 0;             
+}
+
+.emptyState {
+  color: #64748b;
+  text-align: center;
+  margin-top: 20px;
+}
+
+.taskList {
+  list-style: none;
+  padding: 16px;         
+  margin: 0;
+  flex: 1;              
+  overflow-y: auto;       
+}
+
+.taskItem {
+  padding: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.taskItem:hover {
+  background-color: #f8fafc;
+}
+
+.taskItem.active {
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.taskHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.taskId {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.taskTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.taskFooter {
+  font-size: 0.75rem;
+  color: #64748b;
+  text-transform: capitalize;
+}
+
+/* PLAYER (Área Direita) */
+.playerContainer {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.playerEmpty {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #64748b;
+}
+
+.playerHeader {
+  padding: 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.description {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 5px 0 0 0;
+}
+
+.btnFinish {
+  background-color: #1e3a8a;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  align-items: right;
+  transition: background 0.2s;
+}
+
+.btnFinish:hover {
+  background-color: #001c42;
+}
+
+/* Steps List */
+.stepsContainer {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stepCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.2s;
+  background: white;
+}
+
+
+.stepCard.pendente { border-left: 4px solid #94a3b8; }
+.stepCard.aprovado { border-left: 4px solid #10b981; background-color: #f0fdf4; }
+.stepCard.reprovado { border-left: 4px solid #ef4444; background-color: #fef2f2; }
+
+.stepHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.stepNumber {
+  font-weight: 700;
+  color: #475569;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.stepStatusBadge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.stepContent {
+  margin-bottom: 16px;
+}
+
+.stepInfo {
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+  color: #334155;
+}
+
+.stepActions {
+  display: flex;
+  gap: 10px;
+}
+
+.btnAction {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-weight: 600;
+  color: #64748b;
+  transition: all 0.2s;
+}
+
+.btnApprove:hover { background-color: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.btnApprove.selected { background-color: #10b981; color: white; border-color: #10b981; }
+
+.btnFail:hover { background-color: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.btnFail.selected { background-color: #ef4444; color: white; border-color: #ef4444; }
+
+
+.evidenceStrip {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.thumbWrapper {
+  position: relative;
+  width: 60px;
+  height: 60px;
+}
+
+.thumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+}
+
+.btnRemoveEvidence {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.galleryTrack {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  max-width: 90%;
+  padding: 20px;
+  scroll-snap-type: x mandatory;
+}
+
+.galleryItem {
+  text-align: center;
+  color: white;
+  min-width: 100%;
+  scroll-snap-align: center;
+}
+
+.galleryImg {
+  max-height: 80vh;
+  max-width: 100%;
+  border: 2px solid white;
+  border-radius: 4px;
+}
+
+/* === DARK MODE === */
+
+:global(body.dark) .playerCard,
+:global(body.dark) .taskCard,
+:global(body.dark) .stepItem {
+  background-color: #111827; 
+  color: #e5e7eb;            
+  border-color: #1f2937;
+}
+
+:global(body.dark) .taskTitle,
+:global(body.dark) .executionTitle,
+:global(body.dark) .stepAction {
+  color: #f9fafb;
+}
+
+:global(body.dark) .taskProject,
+:global(body.dark) .executionDesc {
+  color: #9ca3af;
+}
+
+:global(body.dark) .stepExpected {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border-left-color: #10b981;
+}
+
+:global(body.dark) .stepApproved {
+  background-color: rgba(16, 185, 129, 0.12);
+  border-color: #065f46;
+}
+
+:global(body.dark) .stepFailed {
+  background-color: rgba(239, 68, 68, 0.12);
+  border-color: #7f1d1d;
+}
+
+:global(body.dark) .emptyState {
+  background-color: #0f172a;   
+  color: #9ca3af;              
+  border-color: #1f2937;      
+}
+
+:global(body.dark) .taskBadge {
+  background-color: #1f2937; 
+  color: #e5e7eb;            
+  border: 1px solid #374151;
+}
+
+:global(body.dark) .btnUpload {
+  background-color: #1f2937;  
+  color: #e5e7eb;             
+  border: 1px solid #374151;
+}
+
+:global(body.dark) .btnUpload:hover {
+  background-color: #374151;
+}
+
+:global(body.dark) .stepNumber {
+  color: #93c5fd; 
+}
+
+:global(body.dark) .executionHeader {
+  border-bottom: 1px solid #1f2937;
+}
+
+:global(body.dark) .active {
+  background-color: #1e293b;
+}
+
+:global(body.dark) .evidenceChip {
+  background-color: #111827;
+  border: 1px solid #1f2937;
+  color: #e5e7eb;
+}
+
+:global(body.dark) .evidenceLink {
+  color: #60a5fa;
+}
+
+:global(body.dark) .deleteBtn {
+  color: #9ca3af;
+}
+
+:global(body.dark) .deleteBtn:hover {
+  color: #f87171;
+}
+
+:global(body.dark) .sidebar {
+  background: #111827;
+  border-color: #1f2937;
+}
+
+:global(body.dark) .taskItem {
+  border-bottom: 1px solid #1f2937;
+  color: #e5e7eb;
+}
+
+:global(body.dark) .taskItem:hover {
+  background-color: #1f2937;
+}
+
+:global(body.dark) .taskItem.active {
+  background-color: #1e293b;
+  border-color: #3b82f6;
+}
+
+:global(body.dark) .taskTitle {
+  color: #f9fafb;
+}
+
+:global(body.dark) .taskId,
+:global(body.dark) .taskFooter {
+  color: #9ca3af;
+}
+
+:global(body.dark) .playerContainer,
+:global(body.dark) .playerEmpty {
+  background: #0f172a;
+  border-color: #1f2937;
+  color: #e5e7eb;
+}
+
+:global(body.dark) .playerHeader {
+  background: #020617;
+  border-bottom: 1px solid #1f2937;
+}
+
+:global(body.dark) .description {
+  color: #9ca3af;
+}
+
+:global(body.dark) .stepCard {
+  background: #020617;
+  border-color: #1f2937;
+}
+
+:global(body.dark) .stepCard.pendente {
+  border-left-color: #64748b;
+}
+
+:global(body.dark) .stepCard.aprovado {
+  background-color: rgba(16, 185, 129, 0.12);
+  border-left-color: #10b981;
+}
+
+:global(body.dark) .stepCard.reprovado {
+  background-color: rgba(239, 68, 68, 0.12);
+  border-left-color: #ef4444;
+}
+
+:global(body.dark) .btnAction {
+  background: #020617;
+  border-color: #1f2937;
+  color: #9ca3af;
+}
+
+:global(body.dark) .btnApprove:hover {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+}
+
+:global(body.dark) .btnFail:hover {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+:global(body.dark) .emptyState {
+  color: #9ca3af;
+}
+
+/* === ESTILOS DO HEADER (PRÉ-CONDIÇÕES E OBJETIVO) === */
+.headerContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.titleRow h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--text-primary);
+}
+
+.metaContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 0.9rem;
+}
+
+.metaBoxWarning, .metaBoxInfo {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 4px solid;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metaBoxWarning {
+  background-color: rgba(234, 179, 8, 0.1); /* Amarelo bem claro */
+  border-left-color: #eab308;
+  color: var(--text-primary);
+}
+
+.metaBoxInfo {
+  background-color: rgba(59, 130, 246, 0.1); /* Azul bem claro */
+  border-left-color: #3b82f6;
+  color: var(--text-primary);
+}
+
+.metaBoxWarning strong, .metaBoxInfo strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.metaBoxWarning p, .metaBoxInfo p {
+  margin: 0;
+  opacity: 0.9;
+  line-height: 1.4;
+  white-space: pre-wrap; /* Mantém quebras de linha se houver */
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px; 
+  margin-top: auto; 
+  margin-bottom: 5%;
+  padding-top: 15px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.pagination-btn {
+  min-width: 32px; 
+  height: 32px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
+  color: #64748b;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.pagination-btn.active {
+  background-color: #001C42;
+  color: #ffffff;
+  border-color: #001C42;
+}
+
+.pagination-btn.nav-btn {
+  font-size: 1.1rem; 
+  font-weight: bold;
+  background-color: #f1f5f9;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #cbd5e1;
+}

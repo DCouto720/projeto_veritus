@@ -15,10 +15,8 @@ def tratar_erro_integridade(e: IntegrityError, mensagens_personalizadas: dict[st
                     detail=message
                 )
 
-    # Log do erro real para o desenvolvedor
     logger.error(f"Erro de Integridade não mapeado: {e}")
     
-    # Mensagem genérica para o usuário se não cair nos filtros acima
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail="Operação negada devido a conflito de dados (violação de integridade)."

@@ -1,11 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import update
 from sqlalchemy.orm import selectinload
 from typing import Sequence, Optional
+import json # <--- Importar json
 
 from app.models.testing import (
     ExecucaoTeste, ExecucaoPasso, PassoCasoTeste, 
-    CasoTeste, StatusExecucaoEnum
+    CasoTeste, StatusExecucaoEnum, StatusPassoEnum
 )
 from app.models.usuario import Usuario
 from app.schemas.execucao_teste import ExecucaoPassoUpdate
@@ -22,9 +24,7 @@ class ExecucaoTesteRepository:
         result = await self.db.execute(query)
         return result.scalars().first() is not None
 
-    # Este método é usado quando você clica em "Alocar" (reutilizar teste)
     async def criar_planejamento(self, ciclo_id: int, caso_id: int, responsavel_id: int) -> ExecucaoTeste:
-        # 1. Cria o Cabeçalho da Execução
         nova_exec = ExecucaoTeste(
             ciclo_teste_id=ciclo_id, 
             caso_teste_id=caso_id, 
@@ -32,18 +32,16 @@ class ExecucaoTesteRepository:
             status_geral=StatusExecucaoEnum.pendente
         )
         self.db.add(nova_exec)
-        await self.db.flush() # Gera o ID da nova_exec
+        await self.db.flush() 
 
-        # 2. Busca os passos originais (Template)
         query_passos = select(PassoCasoTeste.id).where(PassoCasoTeste.caso_teste_id == caso_id)
         passos_ids = (await self.db.execute(query_passos)).scalars().all()
         
-        # 3. Copia os passos para a tabela de execução
         if passos_ids:
             novos_passos_execucao = [
                 ExecucaoPasso(
                     execucao_teste_id=nova_exec.id, 
-                    passo_caso_teste_id=pid, # Vincula ao passo original
+                    passo_caso_teste_id=pid, 
                     status="pendente", 
                     resultado_obtido=""
                 ) 
@@ -52,24 +50,22 @@ class ExecucaoTesteRepository:
             self.db.add_all(novos_passos_execucao)
         
         await self.db.commit()
-        
-        # Retorna o objeto completo com os relacionamentos carregados
         return await self.get_by_id(nova_exec.id)
 
-    async def get_by_id(self, exec_id: int) -> Optional[ExecucaoTeste]:
+    async def get_by_id(self, id: int) -> Optional[ExecucaoTeste]:
         query = (
             select(ExecucaoTeste)
             .options(
-                # Carrega dados do Caso de Teste Pai e seus passos originais
-                selectinload(ExecucaoTeste.caso_teste).selectinload(CasoTeste.passos),
-                
-                # Carrega dados do Responsável
+                selectinload(ExecucaoTeste.caso_teste).options(
+                    selectinload(CasoTeste.passos),
+                    selectinload(CasoTeste.projeto),
+                    selectinload(CasoTeste.ciclo)
+                ),
+                selectinload(ExecucaoTeste.passos_executados).selectinload(ExecucaoPasso.passo_template),
                 selectinload(ExecucaoTeste.responsavel).selectinload(Usuario.nivel_acesso),
-
-                # [IMPORTANTE] Carrega os passos da execução E o template original de cada um
-                selectinload(ExecucaoTeste.passos_executados).selectinload(ExecucaoPasso.passo_template) 
+                selectinload(ExecucaoTeste.ciclo)
             )
-            .where(ExecucaoTeste.id == exec_id)
+            .where(ExecucaoTeste.id == id)
         )
         result = await self.db.execute(query)
         return result.scalars().first()
@@ -85,9 +81,14 @@ class ExecucaoTesteRepository:
         query = (
             select(ExecucaoTeste)
             .options(
-                selectinload(ExecucaoTeste.caso_teste).selectinload(CasoTeste.passos),
-                selectinload(ExecucaoTeste.passos_executados).selectinload(ExecucaoPasso.passo_template),
-                selectinload(ExecucaoTeste.responsavel).selectinload(Usuario.nivel_acesso)
+                selectinload(ExecucaoTeste.ciclo),
+                selectinload(ExecucaoTeste.responsavel).selectinload(Usuario.nivel_acesso),
+                selectinload(ExecucaoTeste.caso_teste).options(
+                    selectinload(CasoTeste.passos), 
+                    selectinload(CasoTeste.ciclo), 
+                    selectinload(CasoTeste.projeto)
+                ),
+                selectinload(ExecucaoTeste.passos_executados).selectinload(ExecucaoPasso.passo_template)
             )
             .where(ExecucaoTeste.responsavel_id == usuario_id)
         )
@@ -103,17 +104,24 @@ class ExecucaoTesteRepository:
     async def get_execucao_passo(self, passo_id: int) -> Optional[ExecucaoPasso]:
         return await self.db.get(ExecucaoPasso, passo_id)
 
+    # --- CORREÇÃO AQUI ---
     async def update_passo(self, passo_id: int, data: ExecucaoPassoUpdate) -> Optional[ExecucaoPasso]:
         passo = await self.db.get(ExecucaoPasso, passo_id)
         
         if passo:
             update_data = data.model_dump(exclude_unset=True)
+            
+            # TRATAMENTO DE EVIDÊNCIAS: Se vier como lista, converte para JSON String
+            if 'evidencias' in update_data:
+                ev = update_data['evidencias']
+                if isinstance(ev, list):
+                    update_data['evidencias'] = json.dumps(ev)
+            
             for k, v in update_data.items():
                 setattr(passo, k, v)
             
             await self.db.commit()
             
-            # Retorna o passo atualizado com o template carregado
             query = (
                 select(ExecucaoPasso)
                 .options(selectinload(ExecucaoPasso.passo_template))
@@ -125,9 +133,40 @@ class ExecucaoTesteRepository:
         return None
 
     async def update_status_geral(self, exec_id: int, status: StatusExecucaoEnum) -> Optional[ExecucaoTeste]:
-        execucao = await self.db.get(ExecucaoTeste, exec_id)
-        if execucao:
-            execucao.status_geral = status
-            await self.db.commit()
-            await self.db.refresh(execucao)
-        return execucao
+        return await self.update_status(exec_id, status)
+
+    async def listar_passos(self, execucao_id: int):
+        query = select(ExecucaoPasso).where(ExecucaoPasso.execucao_teste_id == execucao_id)
+        result = await self.db.execute(query)
+        return result.scalars().all()
+    
+    async def update_status(self, id: int, status: StatusExecucaoEnum):
+        stmt = (
+            update(ExecucaoTeste)
+            .where(ExecucaoTeste.id == id)
+            .values(status_geral=status)
+            .execution_options(synchronize_session="fetch")
+        )
+        await self.db.execute(stmt)
+
+        if status == StatusExecucaoEnum.reteste:
+            stmt_passos = (
+                update(ExecucaoPasso)
+                .where(
+                    ExecucaoPasso.execucao_teste_id == id,
+                    ExecucaoPasso.status == StatusPassoEnum.reprovado
+                )
+                .values(
+                    status=StatusPassoEnum.pendente,
+                    resultado_obtido="",
+                    evidencias="[]"
+                )
+            )
+            await self.db.execute(stmt_passos)
+
+        await self.db.commit()
+        
+        return await self.get_by_id(id)
+
+    async def atualizar_status_geral(self, execucao_id: int, novo_status: StatusExecucaoEnum):
+        return await self.update_status(execucao_id, novo_status)

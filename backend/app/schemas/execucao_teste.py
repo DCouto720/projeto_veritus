@@ -1,13 +1,9 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 
-# Importando os schemas aninhados
 from app.schemas.caso_teste import CasoTesteResponse, UsuarioSimple, PassoCasoTesteResponse
-# Importando StatusExecucaoEnum se necessário, mas aqui usaremos string ou enum
 from app.models.testing import StatusExecucaoEnum
-
-# --- CLASSES BASE ---
 
 class ExecucaoTesteBase(BaseModel):
     ciclo_teste_id: int
@@ -20,18 +16,15 @@ class ExecucaoPassoBase(BaseModel):
     resultado_obtido: Optional[str] = None
     evidencias: Optional[str] = None
 
-# --- CREATE (A CLASSE QUE FALTAVA) ---
 class ExecucaoTesteCreate(ExecucaoTesteBase):
     pass
 
-# --- UPDATE ---
-
 class ExecucaoPassoUpdate(BaseModel):
+    model_config = ConfigDict(extra='ignore')
+
     status: Optional[str] = None
     resultado_obtido: Optional[str] = None
-    evidencias: Optional[str] = None
-
-# --- RESPONSE ---
+    evidencias: Optional[Union[List[str], str]] = None 
 
 class ExecucaoPassoResponse(ExecucaoPassoBase):
     id: int

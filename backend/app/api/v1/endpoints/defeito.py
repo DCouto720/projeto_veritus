@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 
 from app.core.database import get_db
 from app.services.defeito_service import DefeitoService
+from app.services.log_service import LogService
 from app.schemas.defeito import DefeitoCreate, DefeitoResponse, DefeitoUpdate
 from app.models.usuario import Usuario 
 from app.api.deps import get_current_user
@@ -16,9 +17,26 @@ def get_service(db: AsyncSession = Depends(get_db)) -> DefeitoService:
 @router.post("/", response_model=DefeitoResponse, status_code=status.HTTP_201_CREATED)
 async def criar_defeito(
     dados: DefeitoCreate, 
-    service: DefeitoService = Depends(get_service)
+    service: DefeitoService = Depends(get_service),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
 ):
-    return await service.registrar_defeito(dados)
+    novo_defeito = await service.registrar_defeito(dados)
+    try:
+        log_service = LogService(db)
+        nome_teste = await service.obter_nome_teste_por_execucao(novo_defeito.execucao_teste_id)
+
+        await log_service.registrar_acao(
+            usuario_id=current_user.id,
+            acao="CRIAR",
+            entidade="Defeito",
+            entidade_id=novo_defeito.id,
+            detalhes=f"Defeito reportado no teste: '{nome_teste}'"
+        )
+    except Exception as e:
+        print(f"Erro ao gerar log de criação: {e}")
+
+    return novo_defeito
 
 @router.get("/execucao/{execucao_id}", response_model=List[DefeitoResponse])
 async def listar_defeitos_execucao(
@@ -27,21 +45,63 @@ async def listar_defeitos_execucao(
 ):
     return await service.listar_por_execucao(execucao_id)
 
-# --- ENDPOINT LIMPO ---
 @router.get("/", response_model=List[DefeitoResponse])
 async def listar_todos_defeitos(
+    responsavel_id: Optional[int] = Query(None, description="Filtrar por ID do responsável"),
     current_user: Usuario = Depends(get_current_user),
     service: DefeitoService = Depends(get_service)
 ):
-    return await service.listar_todos(current_user)
+    return await service.listar_todos(current_user, filtro_responsavel_id=responsavel_id)
 
 @router.put("/{id}", response_model=DefeitoResponse)
 async def atualizar_defeito(
     id: int, 
     dados: DefeitoUpdate, 
-    service: DefeitoService = Depends(get_service)
+    service: DefeitoService = Depends(get_service),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
 ):
     defeito = await service.atualizar_defeito(id, dados)
+    
     if not defeito:
         raise HTTPException(status_code=404, detail="Defeito não encontrado")
+    try:
+        log_service = LogService(db)        
+        status_texto = str(defeito.status.value) if hasattr(defeito.status, 'value') else str(defeito.status)
+        nome_teste = await service.obter_nome_teste_por_execucao(defeito.execucao_teste_id)
+        titulo_defeito = defeito.titulo if defeito.titulo else "Sem título"
+
+        await log_service.registrar_acao(
+            usuario_id=current_user.id,
+            acao="ATUALIZAR",
+            entidade="Defeito",
+            entidade_id=defeito.id,
+            detalhes=f"Teste: {nome_teste} | Status: {status_texto}"
+        )
+    except Exception as e:
+        print(f"Erro ao gerar log de atualização: {e}")
+
     return defeito
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def excluir_defeito(
+    id: int, 
+    service: DefeitoService = Depends(get_service),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    sucesso = await service.excluir_defeito(id)
+    
+    if not sucesso:
+        raise HTTPException(status_code=404, detail="Defeito não encontrado")
+    try:
+        log_service = LogService(db)
+        await log_service.registrar_acao(
+            usuario_id=current_user.id,
+            acao="DELETAR",
+            entidade="Defeito",
+            entidade_id=id,
+            detalhes=f"Defeito ID {id} excluído."
+        )
+    except Exception as e:
+        print(f"Erro ao gerar log de exclusão: {e}")

@@ -1,12 +1,12 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import delete, update as sqlalchemy_update
+from sqlalchemy import delete, update as sqlalchemy_update, desc, and_
 from typing import Sequence, Optional
 
 from app.models.testing import CasoTeste, PassoCasoTeste, ExecucaoTeste, StatusExecucaoEnum, ExecucaoPasso, Defeito
 from app.models.usuario import Usuario
-from app.schemas.caso_teste import CasoTesteCreate
+from app.schemas.caso_teste import CasoTesteCreate, CasoTesteUpdate
 
 class CasoTesteRepository:
     def __init__(self, db: AsyncSession):
@@ -17,12 +17,28 @@ class CasoTesteRepository:
         result = await self.db.execute(query)
         return result.scalars().first()
     
-    async def get_by_projeto(self, projeto_id: int) -> Sequence[CasoTeste]:
+    async def get_all(self) -> Sequence[CasoTeste]:
         query = (
             select(CasoTeste)
             .options(
                 selectinload(CasoTeste.passos),
-                selectinload(CasoTeste.responsavel).selectinload(Usuario.nivel_acesso)
+                selectinload(CasoTeste.responsavel).selectinload(Usuario.nivel_acesso),
+                selectinload(CasoTeste.ciclo),
+                selectinload(CasoTeste.projeto)
+            )
+            .order_by(CasoTeste.id.desc())
+        )
+        result = await self.db.execute(query)
+        return result.scalars().all()
+    
+    async def get_all_by_projeto(self, projeto_id: int) -> Sequence[CasoTeste]:
+        query = (
+            select(CasoTeste)
+            .options(
+                selectinload(CasoTeste.passos),
+                selectinload(CasoTeste.responsavel).selectinload(Usuario.nivel_acesso),
+                selectinload(CasoTeste.ciclo),
+                selectinload(CasoTeste.projeto)
             )
             .where(CasoTeste.projeto_id == projeto_id)
             .order_by(CasoTeste.id.desc())
@@ -30,26 +46,37 @@ class CasoTesteRepository:
         result = await self.db.execute(query)
         return result.scalars().all()
 
+    async def get_by_id(self, caso_id: int) -> Optional[CasoTeste]:
+        query = (
+            select(CasoTeste)
+            .options(
+                selectinload(CasoTeste.passos),
+                selectinload(CasoTeste.responsavel).selectinload(Usuario.nivel_acesso),
+                selectinload(CasoTeste.ciclo),
+                selectinload(CasoTeste.projeto)
+            )
+            .where(CasoTeste.id == caso_id)
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
     async def create(self, projeto_id: int, caso_data: CasoTesteCreate) -> CasoTeste:
-        # 1. Cria a "Receita" (Caso de Teste)
         db_caso = CasoTeste(
             projeto_id=projeto_id,
-            **caso_data.model_dump(exclude={'passos', 'ciclo_id'}) 
+            **caso_data.model_dump(exclude={'passos'}) 
         )
         self.db.add(db_caso)
         await self.db.flush() 
 
-        # 2. Cria os Passos (Receita)
-        passos_objs = [] # Lista para guardar os objetos criados
+        passos_objs = []
         if caso_data.passos:
             passos_objs = [
                 PassoCasoTeste(caso_teste_id=db_caso.id, **p.model_dump()) 
                 for p in caso_data.passos
             ]
             self.db.add_all(passos_objs)
-            await self.db.flush() # Importante: flush para gerar os IDs dos passos (p.id)
+            await self.db.flush()
         
-        # 3. Alocação Automática (CORRIGIDA)
         if caso_data.ciclo_id and caso_data.responsavel_id:
             nova_execucao = ExecucaoTeste(
                 ciclo_teste_id=caso_data.ciclo_id,
@@ -58,14 +85,13 @@ class CasoTesteRepository:
                 status_geral=StatusExecucaoEnum.pendente
             )
             self.db.add(nova_execucao)
-            await self.db.flush() # Gera o ID da execução
+            await self.db.flush() 
 
-            # --- AQUI ESTAVA A FALTA: Criação dos Passos da Execução ---
             if passos_objs:
                 passos_execucao = [
                     ExecucaoPasso(
                         execucao_teste_id=nova_execucao.id,
-                        passo_caso_teste_id=p.id, # Vincula ao passo original criado acima
+                        passo_caso_teste_id=p.id,
                         status="pendente",
                         resultado_obtido=""
                     )
@@ -73,51 +99,31 @@ class CasoTesteRepository:
                 ]
                 self.db.add_all(passos_execucao)
 
-        # 4. Salva tudo
         await self.db.commit()
-        
         return await self.get_by_id(db_caso.id)
 
-    async def get_by_id(self, caso_id: int) -> Optional[CasoTeste]:
-        query = (
-            select(CasoTeste)
-            .options(
-                selectinload(CasoTeste.passos),
-                selectinload(CasoTeste.responsavel).selectinload(Usuario.nivel_acesso)
-            )
-            .where(CasoTeste.id == caso_id)
-        )
-        result = await self.db.execute(query)
-        return result.scalars().first()
+    async def update(self, caso_id: int, dados: CasoTesteUpdate) -> Optional[CasoTeste]:
+        dados_dict = dados.model_dump(exclude_unset=True)
+        passos_data = dados_dict.pop('passos', None)
 
-    async def update(self, caso_id: int, dados: dict) -> Optional[CasoTeste]:
-        passos_data = dados.pop('passos', None)
-
-        # 1. Atualiza campos simples
-        if dados:
+        if dados_dict:
             await self.db.execute(
-                sqlalchemy_update(CasoTeste).where(CasoTeste.id == caso_id).values(**dados)
+                sqlalchemy_update(CasoTeste).where(CasoTeste.id == caso_id).values(**dados_dict)
             )
 
-        # 2. Gestão Inteligente de Passos
+        current_passos_ids = []
+        
         if passos_data is not None:
-            # A. Identificar IDs que vieram no payload
-            incoming_ids = [p['id'] for p in passos_data if 'id' in p and p['id']]
+            query_atuais = select(PassoCasoTeste.id).where(PassoCasoTeste.caso_teste_id == caso_id)
+            ids_no_banco = (await self.db.execute(query_atuais)).scalars().all()
             
-            # B. Apagar passos que existem no banco mas NÃO vieram no payload
-            if incoming_ids:
-                await self.db.execute(
-                    delete(PassoCasoTeste)
-                    .where(PassoCasoTeste.caso_teste_id == caso_id)
-                    .where(PassoCasoTeste.id.notin_(incoming_ids))
-                )
-            else:
-                # Se não veio nenhum ID e a lista não é vazia, talvez sejam todos novos. 
-                # Se a lista for vazia [], apaga tudo.
-                if not passos_data: 
-                     await self.db.execute(delete(PassoCasoTeste).where(PassoCasoTeste.caso_teste_id == caso_id))
+            incoming_ids = [p['id'] for p in passos_data if 'id' in p and p['id']]
+            ids_para_deletar = [id_ for id_ in ids_no_banco if id_ not in incoming_ids]
 
-            # C. Atualizar ou Criar
+            if ids_para_deletar:
+                await self.db.execute(delete(ExecucaoPasso).where(ExecucaoPasso.passo_caso_teste_id.in_(ids_para_deletar)))
+                await self.db.execute(delete(PassoCasoTeste).where(PassoCasoTeste.id.in_(ids_para_deletar)))
+
             for passo in passos_data:
                 if 'id' in passo and passo['id']:
                     await self.db.execute(
@@ -125,20 +131,66 @@ class CasoTesteRepository:
                         .where(PassoCasoTeste.id == passo['id'])
                         .values(acao=passo['acao'], resultado_esperado=passo['resultado_esperado'], ordem=passo['ordem'])
                     )
+                    current_passos_ids.append(passo['id'])
                 else:
-                    self.db.add(PassoCasoTeste(
+                    novo_passo = PassoCasoTeste(
                         caso_teste_id=caso_id,
                         acao=passo['acao'],
                         resultado_esperado=passo['resultado_esperado'],
                         ordem=passo['ordem']
+                    )
+                    self.db.add(novo_passo)
+                    await self.db.flush()
+                    current_passos_ids.append(novo_passo.id)
+
+        query_exec = select(ExecucaoTeste).where(
+            ExecucaoTeste.caso_teste_id == caso_id,
+            ExecucaoTeste.status_geral == StatusExecucaoEnum.pendente
+        )
+        exec_result = await self.db.execute(query_exec)
+        execucao_ativa = exec_result.scalars().first()
+
+        if execucao_ativa:
+            has_changes = False
+            if 'responsavel_id' in dados_dict and execucao_ativa.responsavel_id != dados_dict['responsavel_id']:
+                execucao_ativa.responsavel_id = dados_dict['responsavel_id']
+                has_changes = True
+            
+            if 'ciclo_id' in dados_dict and execucao_ativa.ciclo_teste_id != dados_dict['ciclo_id']:
+                if dados_dict['ciclo_id']:
+                    execucao_ativa.ciclo_teste_id = dados_dict['ciclo_id']
+                    has_changes = True
+            
+            if has_changes:
+                self.db.add(execucao_ativa)
+
+            if passos_data is not None:
+                await self.db.execute(
+                    delete(ExecucaoPasso)
+                    .where(ExecucaoPasso.execucao_teste_id == execucao_ativa.id)
+                    .where(ExecucaoPasso.passo_caso_teste_id.notin_(current_passos_ids))
+                )
+                subquery_existentes = select(ExecucaoPasso.passo_caso_teste_id).where(ExecucaoPasso.execucao_teste_id == execucao_ativa.id)
+                
+                query_passos_faltantes = select(PassoCasoTeste).where(
+                    PassoCasoTeste.caso_teste_id == caso_id,
+                    PassoCasoTeste.id.in_(current_passos_ids),
+                    PassoCasoTeste.id.notin_(subquery_existentes)
+                )
+                passos_novos = (await self.db.execute(query_passos_faltantes)).scalars().all()
+
+                for pn in passos_novos:
+                    self.db.add(ExecucaoPasso(
+                        execucao_teste_id=execucao_ativa.id,
+                        passo_caso_teste_id=pn.id,
+                        status="pendente",
+                        resultado_obtido=""
                     ))
 
         await self.db.commit()
-        self.db.expire_all()
         return await self.get_by_id(caso_id)
 
     async def delete(self, caso_id: int) -> bool:
-        # Cascade manual para garantir limpeza
         execs = await self.db.execute(select(ExecucaoTeste.id).where(ExecucaoTeste.caso_teste_id == caso_id))
         execs_ids = execs.scalars().all()
 
